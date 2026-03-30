@@ -351,10 +351,12 @@ function PostModal({ postId, onClose }: { postId: string; onClose: () => void })
 
 // ==================== Post Card ====================
 function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
-  const navigate = useNavigate() // Inside PostCard component, first get navigate
+  const navigate = useNavigate() // Make sure this hook is INSIDE the component
   const { togglePostLike } = useApp()
+  const [showHeart, setShowHeart] = useState(false)
 
-  const handleDoubleClick = () => {
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (!post.liked) {
       togglePostLike(post.id)
       setShowHeart(true)
@@ -365,7 +367,7 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
   return (
     <motion.div layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       className="glass group cursor-pointer overflow-hidden rounded-2xl transition-all hover:bg-white/10"
-      onClick={onClick} onDoubleClick={(e) => { e.stopPropagation(); handleDoubleClick() }}>
+      onClick={onClick} onDoubleClick={handleDoubleClick}>
       <div className="relative">
         <img src={post.image} alt={post.title} className="w-full object-cover" />
         <AnimatePresence>
@@ -384,10 +386,21 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
           ))}
         </div>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          
+          {/* === Avatar & Name (Click to Navigate) === */}
+          <div 
+            onClick={(e) => {
+              e.stopPropagation() // Prevent opening the post modal
+              navigate(`/profile/${encodeURIComponent(post.author)}`) // Arrow function is CRITICAL here
+            }}
+            className="flex cursor-pointer items-center gap-2 rounded-lg p-1 transition hover:bg-white/5"
+            title={`Visit ${post.author}'s profile`}
+          >
             <div className={`h-5 w-5 rounded-full bg-gradient-to-br ${post.avatarGradient}`} />
-            <span className="text-[11px] text-white/50">{post.author}</span>
+            <span className="text-[11px] font-medium text-white/70 transition hover:text-[#4ADE80]">{post.author}</span>
           </div>
+          {/* ========================================= */}
+
           <div className="flex items-center gap-1">
             <Heart className={`h-3.5 w-3.5 ${post.liked ? 'fill-[#F472B6] text-[#F472B6]' : 'text-white/40'}`} />
             <span className="text-[11px] text-white/50">{post.likes >= 1000 ? `${(post.likes/1000).toFixed(1)}k` : post.likes}</span>
