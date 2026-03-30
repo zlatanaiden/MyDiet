@@ -8,6 +8,11 @@ export interface Meal {
   fats: number
   image: string
   checked: boolean
+  /**
+   * 该餐品包含的常见过敏源列表。
+   * 用于过滤掉有对应过敏源的用户。
+   */
+  allergens?: string[]
 }
 
 export interface DayMeals {
@@ -24,6 +29,10 @@ export interface Alternative {
   carbs: number
   fats: number
   image: string
+  /**
+   * A list of common allergens contained in the meal.
+   */
+  allergens?: string[]
 }
 
 export interface DayPlan {
@@ -117,14 +126,17 @@ export const todayMeals: DayMeals = {
   breakfast: {
     id: 'b1', name: 'Oatmeal Bowl', calories: 380, protein: 14, carbs: 58, fats: 9,
     image: mealImages.oatmeal, checked: false,
+    allergens: ['gluten'],
   },
   lunch: {
     id: 'l1', name: 'Chicken Salad', calories: 520, protein: 42, carbs: 35, fats: 22,
     image: mealImages.chickenSalad, checked: false,
+    allergens: [],
   },
   dinner: {
     id: 'd1', name: 'Grilled Salmon', calories: 480, protein: 38, carbs: 28, fats: 18,
     image: mealImages.grilledSalmon, checked: false,
+    allergens: ['fish'],
   },
 }
 
