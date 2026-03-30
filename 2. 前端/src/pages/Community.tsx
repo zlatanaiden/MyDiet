@@ -78,12 +78,25 @@ function CreatePostModal({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [tags, setTags] = useState('')
-  const [imageUrl, setImageUrl] = useState('')
+  const [imagePreview, setImagePreview] = useState<string | null>(null) // Store image Base64 data
+
+  // Handle local image upload and convert to Base64
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        // Once read, save the result to state for preview and posting
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
 
   const handleSubmit = () => {
     if (!title.trim() || !content.trim()) return
 
-    // 处理标签，确保以 # 开头
+    // Process tags, ensure they start with #
     const formattedTags = tags
       .split(',')
       .map(t => t.trim())
@@ -94,7 +107,8 @@ function CreatePostModal({ onClose }: { onClose: () => void }) {
       id: `new-post-${Date.now()}`,
       title,
       content,
-      image: imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop', // 默认占位图
+      // Use Base64 data if user uploaded an image, otherwise use default placeholder
+      image: imagePreview || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop', 
       author: user.name || 'You',
       avatarGradient: 'from-[#4ADE80] to-[#22D3EE]',
       likes: 0,
@@ -134,10 +148,27 @@ function CreatePostModal({ onClose }: { onClose: () => void }) {
               className="w-full resize-none rounded-xl bg-white/5 px-4 py-2.5 text-[13px] text-white placeholder-white/30 outline-none ring-1 ring-white/10 focus:ring-[#4ADE80]/50" />
           </div>
 
+          {/* Local image upload component */}
           <div>
-            <label className="mb-1.5 block text-[13px] text-white/60">Image URL (Optional)</label>
-            <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="https://..."
-              className="w-full rounded-xl bg-white/5 px-4 py-2.5 text-[13px] text-white placeholder-white/30 outline-none ring-1 ring-white/10 focus:ring-[#4ADE80]/50" />
+            <label className="mb-1.5 block text-[13px] text-white/60">Photo (Optional)</label>
+            <div className="flex items-center gap-4">
+              <label className="flex cursor-pointer items-center justify-center rounded-xl bg-white/5 px-4 py-2.5 text-[13px] text-white transition hover:bg-white/10 ring-1 ring-white/10">
+                <span>Choose File</span>
+                <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+              </label>
+              
+              {/* Image preview area */}
+              {imagePreview && (
+                <div className="relative h-12 w-12 overflow-hidden rounded-lg ring-1 ring-white/20">
+                  <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
+                  <button onClick={() => setImagePreview(null)}
+                    className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center bg-black/60 text-white/80 transition hover:bg-black hover:text-white"
+                    title="Remove image">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div>
