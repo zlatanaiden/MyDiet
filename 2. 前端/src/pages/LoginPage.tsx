@@ -7,34 +7,34 @@ import { useApp } from '../context/AppContext'
 export default function LoginPage() {
   const navigate = useNavigate()
   const { signIn, planCompleted } = useApp()
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => localStorage.getItem('mydiet_remembered_email') || '')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
+  const [errors, setErrors] = useState<{ email?: string; password?: string; general?: string }>({})
 
   const handleSignIn = (e: React.FormEvent) => {
     e.preventDefault()
-    const newErrors: { email?: string; password?: string } = {}
-    if (!email) newErrors.email = 'Email is required'
+    const newErrors: { email?: string; password?: string; general?: string } = {}
+    const normalizedEmail = email.trim().toLowerCase()
+
+    if (!normalizedEmail) newErrors.email = 'Email is required'
+    else if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) newErrors.email = 'Please enter a valid email address'
     if (!password) newErrors.password = 'Password is required'
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       return
     }
 
-    // Mark as logged in via context
-    signIn()
-    localStorage.setItem('mydiet_user_email', email)
-
-    // Check if this is a brand-new user or returning user
-    if (planCompleted) {
-      // Returning user — go straight to Homepage
-      navigate('/', { replace: true })
-    } else {
-      // New user — go to Plan questionnaire (2-1)
-      navigate('/plan', { replace: true })
+    const result = signIn(normalizedEmail, password, remember)
+    if (!result.success) {
+      setErrors({ general: result.message || 'Unable to sign in' })
+      return
     }
+
+    if (planCompleted) navigate('/', { replace: true })
+    else navigate('/plan', { replace: true })
   }
 
   return (
@@ -107,7 +107,7 @@ export default function LoginPage() {
                   <div className={`flex h-11 items-center gap-2.5 rounded-xl border bg-white/5 px-3.5 transition ${errors.email ? 'border-[#F87171]/50' : 'border-white/10 focus-within:border-[#4ADE80]/40'}`}>
                     <Mail className="h-[18px] w-[18px] shrink-0 text-white/28" />
                     <input type="email" value={email}
-                      onChange={e => { setEmail(e.target.value); setErrors(er => ({ ...er, email: undefined })) }}
+                      onChange={e => { setEmail(e.target.value); setErrors(er => ({ ...er, email: undefined, general: undefined })) }}
                       placeholder="name@example.com"
                       className="flex-1 bg-transparent text-[14px] text-white placeholder-white/28 outline-none" />
                   </div>
@@ -123,7 +123,7 @@ export default function LoginPage() {
                   <div className={`flex h-11 items-center gap-2.5 rounded-xl border bg-white/5 px-3.5 transition ${errors.password ? 'border-[#F87171]/50' : 'border-white/10 focus-within:border-[#4ADE80]/40'}`}>
                     <Lock className="h-[18px] w-[18px] shrink-0 text-white/28" />
                     <input type={showPassword ? 'text' : 'password'} value={password}
-                      onChange={e => { setPassword(e.target.value); setErrors(er => ({ ...er, password: undefined })) }}
+                      onChange={e => { setPassword(e.target.value); setErrors(er => ({ ...er, password: undefined, general: undefined })) }}
                       placeholder="••••••••"
                       className="flex-1 bg-transparent text-[14px] text-white placeholder-white/28 outline-none" />
                     <button type="button" onClick={() => setShowPassword(v => !v)} className="text-white/20 transition hover:text-white/50">
@@ -132,6 +132,8 @@ export default function LoginPage() {
                   </div>
                   {errors.password && <p className="mt-1 text-[12px] text-[#F87171]">{errors.password}</p>}
                 </div>
+
+                {errors.general && <p className="text-[12px] text-[#F87171]">{errors.general}</p>}
 
                 {/* Remember me */}
                 <div className="flex items-center gap-2">

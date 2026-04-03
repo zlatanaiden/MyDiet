@@ -21,6 +21,7 @@ export default function SignupPage() {
     if (!firstName.trim()) errs.firstName = 'First name is required'
     if (!lastName.trim()) errs.lastName = 'Last name is required'
     if (!email.trim()) errs.email = 'Email is required'
+    else if (!/^\S+@\S+\.\S+$/.test(email.trim().toLowerCase())) errs.email = 'Please enter a valid email address'
     if (!password) errs.password = 'Password is required'
     else if (password.length < 6) errs.password = 'Password must be at least 6 characters'
     if (!confirmPassword) errs.confirmPassword = 'Please confirm your password'
@@ -37,10 +38,12 @@ export default function SignupPage() {
       return
     }
 
-    // Sign up as a brand-new user — clears all existing data
-    signUp(`${firstName} ${lastName}`, email)
+    const result = signUp(`${firstName} ${lastName}`, email.trim().toLowerCase(), password)
+    if (!result.success) {
+      setErrors({ email: result.message || 'Unable to create account' })
+      return
+    }
 
-    // New user → Plan questionnaire (2-1) first
     navigate('/plan', { replace: true })
   }
 

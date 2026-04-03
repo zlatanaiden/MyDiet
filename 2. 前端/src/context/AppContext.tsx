@@ -17,6 +17,11 @@ export interface ExtraMeal {
   fats: number
 }
 
+export interface AuthResult {
+  success: boolean
+  message?: string
+}
+
 // Per-date storage for nutrition & meals
 interface DailyRecord {
   nutrition: NutritionData
@@ -104,8 +109,8 @@ interface AppContextType {
   refreshPosts: () => void
   togglePostLike: (postId: string) => void
   // Auth
-  signIn: () => void
-  signUp: (name: string, email: string) => void
+  signIn: (email: string, password: string, remember?: boolean) => AuthResult
+  signUp: (name: string, email: string, password: string) => AuthResult
   signOut: () => void
 }
 
@@ -120,6 +125,25 @@ function loadState<T>(key: string, fallback: T): T {
 
 function saveState(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value))
+}
+
+interface StoredAccount {
+  email: string
+  password: string
+  name: string
+  createdAt: string
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function loadAccounts(): StoredAccount[] {
+  return loadState<StoredAccount[]>('mydiet_accounts', [])
+}
+
+function saveAccounts(accounts: StoredAccount[]) {
+  saveState('mydiet_accounts', accounts)
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -502,15 +526,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  // Sign in — set session flag (keeps existing data)
-  const signIn = useCallback(() => {
+  // Sign in — validate saved account and start a session
+  const signIn = useCallback((email: string, password: string, remember = false): AuthResult => {
+    const normalizedEmail = normalizeEmail(email)
+    const normalizedPassword = password.trim()
+    const accounts = loadAccounts()
+    const account = accounts.find(acc => acc.email === normalizedEmail)
+
+    if (!account) {
+      return { success: false, message: 'No account found for this email' }
+    }
+
+    if (account.password !== normalizedPassword) {
+      return { success: false, message: 'Incorrect password' }
+    }
+
     localStorage.setItem('mydiet_logged_in', 'true')
+    localStorage.setItem('mydiet_user_email', normalizedEmail)
+    if (remember) localStorage.setItem('mydiet_remembered_email', normalizedEmail)
+    else localStorage.removeItem('mydiet_remembered_email')
+
+    setUserState(prev => {
+      const updated = { ...prev, name: account.name || prev.name }
+      saveState('mydiet_user', updated)
+      return updated
+    })
     setIsLoggedIn(true)
+    return { success: true }
   }, [])
 
-  // Sign up — NEW account: clear all data, reset everything to zero
-  const signUp = useCallback((name: string, email: string) => {
-    // Clear all persisted data
+  // Sign up — create account if email does not already exist
+  const signUp = useCallback((name: string, email: string, password: string): AuthResult => {
+    const normalizedEmail = normalizeEmail(email)
+    const normalizedPassword = password.trim()
+    const displayName = name.trim() || 'New User'
+
+    const accounts = loadAccounts()
+    const exists = accounts.some(acc => acc.email === normalizedEmail)
+    if (exists) {
+      return { success: false, message: 'This email has already been registered' }
+    }
+
+    const nextAccounts = [
+      ...accounts,
+      {
+        email: normalizedEmail,
+        password: normalizedPassword,
+        name: displayName,
+        createdAt: new Date().toISOString(),
+      },
+    ]
+    saveAccounts(nextAccounts)
+
+    // Clear app-specific persisted data for a fresh new profile
     localStorage.removeItem('mydiet_daily')
     localStorage.removeItem('mydiet_streak')
     localStorage.removeItem('mydiet_streak_today')
@@ -518,10 +586,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('mydiet_plan_done')
     localStorage.removeItem('mydiet_unit')
 
-    // Reset user to a fresh profile with the new name
     const freshUser: UserProfile = {
       ...defaultUser,
-      name: name || 'New User',
+      name: displayName,
       uid: `UID-${Date.now()}`,
       age: 0,
       gender: '',
@@ -543,12 +610,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveState('mydiet_user', freshUser)
     setUserState(freshUser)
 
-    // Reset all in-memory state
     setStreak(0)
     saveState('mydiet_streak', 0)
     setStreakCheckedToday(false)
     saveState('mydiet_streak_today', false)
     setDailyRecords({})
+    saveState('mydiet_daily', {})
     setPlanCompleted(false)
     saveState('mydiet_plan_done', false)
     setPlan(weeklyPlan)
@@ -556,10 +623,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUnitState('metric')
     saveState('mydiet_unit', 'metric')
 
-    // Mark as logged in
     localStorage.setItem('mydiet_logged_in', 'true')
-    localStorage.setItem('mydiet_user_email', email)
+    localStorage.setItem('mydiet_user_email', normalizedEmail)
     setIsLoggedIn(true)
+    return { success: true }
   }, [])
 
   // Sign out — clear session but keep data in localStorage for sign-back-in
