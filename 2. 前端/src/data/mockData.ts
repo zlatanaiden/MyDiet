@@ -66,6 +66,7 @@ export interface Comment {
   text: string
   likes: number
   time: string
+  liked?: boolean
   replies?: Comment[]
 }
 

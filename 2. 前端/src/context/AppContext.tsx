@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { defaultUser, todayMeals, weeklyPlan, communityPosts, trendingPosts, type UserProfile, type DayMeals, type DayPlan, type Post, type Comment } from '../data/mockData'
 
 interface NutritionData {
@@ -102,12 +102,12 @@ interface AppContextType {
   toggleFollow: (username: string) => void; 
   addPost: (post: Post) => void; 
   addComment: (postId: string, comment: Comment) => void
-  addComment: (postId: string, comment: Comment) => void
   deleteComment: (postId: string, commentId: string) => void
   addReplyToComment: (postId: string, commentId: string, reply: Comment) => void
   updatePostComments: (postId: string, comments: Comment[]) => void
   refreshPosts: () => void
   togglePostLike: (postId: string) => void
+  toggleCommentLike: (postId: string, commentId: string) => void
   // Auth
   signIn: (email: string, password: string, remember?: boolean) => AuthResult
   signUp: (name: string, email: string, password: string) => AuthResult
@@ -163,9 +163,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadState('mydiet_daily', {})
   )
 
-  // Community posts with persistent comments
-  const [posts, setPostsState] = useState<Post[]>(() => loadState('mydiet_posts', communityPosts))
-  const [trendingPostsList, setTrendingPostsState] = useState<Post[]>(() => loadState('mydiet_tposts', trendingPosts))
+// Community posts initialized as empty array instead of fake data
+  const [posts, setPostsState] = useState<Post[]>(() => loadState('mydiet_posts', []))
+  const [trendingPostsList, setTrendingPostsState] = useState<Post[]>(() => loadState('mydiet_tposts', []))
+
+// --- NEW: Fetch real post data from the backend ---
+  useEffect(() => {
+    const fetchRealPosts = async () => {
+      try {
+        const response = await fetch('http://localhost:8080/api/posts')
+        if (!response.ok) throw new Error('Network request failed')
+        
+        const backendData = await response.json()
+
+        const transformedPosts: Post[] = backendData.map((bp: any) => ({
+          id: String(bp.id),
+          title: bp.title,
+          content: bp.content,
+          image: bp.imageUrl || '',
+          author: bp.userId === 1 ? 'Sarah_Fit' : (bp.userId === 2 ? 'ChefMike' : `User${bp.userId}`),
+          avatarGradient: bp.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]',
+          likes: bp.likes || 0,
+          liked: false,
+          tags: bp.tags ? JSON.parse(bp.tags) : [],
+          
+          // --- Mapped comments ---
+          comments: bp.comments ? bp.comments.map((c: any) => ({
+            id: String(c.id),
+            text: c.content,
+            author: c.userId === 1 ? 'Sarah_Fit' : 'ChefMike',
+            avatarGradient: c.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]',
+            time: 'Just now',
+            likes: c.likes || 0,
+            liked: false,
+            replies: []
+          })) : [],
+          
+          nutrition: bp.nutrition ? JSON.parse(bp.nutrition) : undefined
+        }))
+
+        setPostsState(transformedPosts);
+        setTrendingPostsState(transformedPosts);
+        localStorage.setItem('mydiet_posts', JSON.stringify(transformedPosts));
+        localStorage.setItem('mydiet_tposts', JSON.stringify(transformedPosts));
+      } catch (error) {
+        console.error("Oops, failed to fetch backend data. Is the backend running?", error)
+      }
+    }
+
+    fetchRealPosts()
+  }, []) 
+  // -------------------------------------
 
   // Get current day's record — ALWAYS sync meal definitions from weekly plan
   const currentKey = getDateKey(selectedYear, selectedMonth, selectedDate)
@@ -381,15 +429,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [selectedYear, selectedMonth, selectedDate, updateDailyRecord])
 
-// Add: Create a new post
-  const addPost = useCallback((post: Post) => {
-    setPostsState(prev => {
-      // Insert the new post at the beginning of the list
-      const updated = [post, ...prev]
-      saveState('mydiet_posts', updated)
-      return updated
-    })
-  }, [])
+// --- MODIFIED: Create a new post and send it to the backend ---
+  const addPost = useCallback(async (post: Post) => {
+    try {
+      // 1. Prepare the data payload matching the Spring Boot entity
+      const postData = {
+        title: post.title,
+        content: post.content,
+        imageUrl: post.image,
+        tags: JSON.stringify(post.tags),
+        nutrition: post.nutrition ? JSON.stringify(post.nutrition) : null
+      };
+
+      // 2. Send the POST request to Spring Boot
+      const response = await fetch('http://localhost:8080/api/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(postData),
+      });
+
+      if (!response.ok) throw new Error('Failed to create post');
+
+      // 3. Get the saved post back from the database (now it has a real ID!)
+      const savedPost = await response.json();
+
+      // 4. Map the backend data back to the frontend UI format
+      const newFrontendPost: Post = {
+        id: String(savedPost.id),
+        title: savedPost.title,
+        content: savedPost.content,
+        image: savedPost.imageUrl || '',
+        author: 'Sarah_Fit', // Temporarily hardcoded until auth is ready
+        avatarGradient: 'from-[#FBBF24] to-[#F97316]',
+        likes: 0,
+        liked: false,
+        tags: savedPost.tags ? JSON.parse(savedPost.tags) : [],
+        comments: [],
+        nutrition: savedPost.nutrition ? JSON.parse(savedPost.nutrition) : undefined
+      };
+
+      // 5. Update the UI to show the new post immediately
+      setPostsState(prev => [newFrontendPost, ...prev]);
+      setTrendingPostsState(prev => [newFrontendPost, ...prev]);
+
+    } catch (error) {
+      console.error("Error creating post:", error);
+    }
+  }, []);
 
   // Add: Toggle follow status for a user
   const toggleFollow = useCallback((targetUsername: string) => {
@@ -412,19 +500,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  // Bug 6: prepend new comment so it appears at the top
-  const addComment = useCallback((postId: string, comment: Comment) => {
-    setPostsState(prev => {
-      const updated = prev.map(p => p.id === postId ? { ...p, comments: [comment, ...p.comments] } : p)
-      saveState('mydiet_posts', updated)
-      return updated
-    })
-    setTrendingPostsState(prev => {
-      const updated = prev.map(p => p.id === postId ? { ...p, comments: [comment, ...p.comments] } : p)
-      saveState('mydiet_tposts', updated)
-      return updated
-    })
-  }, [])
+// --- MODIFIED: Send a new comment to the Spring Boot backend ---
+
+const addComment = useCallback(async (postId: string, comment: Comment) => {
+
+  try {
+
+    // 1. Send a POST request (extract the text field from the comment object)
+    const response = await fetch(`http://localhost:8080/api/posts/${postId}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: comment.text }), 
+    });
+
+    if (!response.ok) throw new Error('Failed to add comment');
+
+    // 2. Retrieve the saved comment returned by the backend (includes generated ID)
+    const savedComment = await response.json();
+
+    // 3. Construct a complete frontend comment object
+    // Keep all original fields, but replace the id with the backend-generated one
+    const newFrontendComment: Comment = {
+      ...comment, 
+      id: String(savedComment.id), 
+    };
+
+    // 4. Update UI state (posts list)
+    setPostsState(prev => prev.map(p => {
+      if (p.id === postId) {
+        return { ...p, comments: [newFrontendComment, ...p.comments] };
+      }
+      return p;
+    }));
+
+    // 5. Update UI state (trending posts list)
+    setTrendingPostsState(prev => prev.map(p => {
+      if (p.id === postId) {
+        return { ...p, comments: [newFrontendComment, ...p.comments] };
+      }
+      return p;
+    }));
+
+  } catch (error) {
+    console.error("Error adding comment:", error);
+  }
+
+}, []);
 
   // Bug 5: delete own comment
   const deleteCommentRecursive = (comments: Comment[], commentId: string): Comment[] => {
@@ -485,24 +608,83 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  // Toggle post like and persist so it survives reload
-  const togglePostLike = useCallback((postId: string) => {
+// --- MODIFIED: Send like/unlike action to Spring Boot backend ---
+  const togglePostLike = useCallback(async (postId: string) => {
+    let isNowLiked = false;
+
+    // 1. Optimistic UI Update: Make the heart turn red instantly for a snappy user experience
     const updater = (p: Post) => {
-      if (p.id !== postId) return p
-      const wasLiked = p.liked
-      return { ...p, liked: !wasLiked, likes: wasLiked ? p.likes - 1 : p.likes + 1 }
+      if (p.id !== postId) return p;
+      isNowLiked = !p.liked; // Toggle the state
+      return { ...p, liked: isNowLiked, likes: isNowLiked ? p.likes + 1 : p.likes - 1 };
+    };
+    
+    setPostsState(prev => prev.map(updater));
+    setTrendingPostsState(prev => prev.map(updater));
+
+    // 2. Silently tell the backend to update the database
+    try {
+      await fetch(`http://localhost:8080/api/posts/${postId}/like?isLike=${isNowLiked}`, {
+        method: 'PUT'
+      });
+    } catch (error) {
+      console.error("Error updating like:", error);
     }
-    setPostsState(prev => {
-      const updated = prev.map(updater)
-      saveState('mydiet_posts', updated)
-      return updated
-    })
-    setTrendingPostsState(prev => {
-      const updated = prev.map(updater)
-      saveState('mydiet_tposts', updated)
-      return updated
-    })
-  }, [])
+  }, []);
+
+// --- MODIFIED: Fix React async state issue and persist data to localStorage ---
+
+const toggleCommentLike = useCallback(async (postId: string, commentId: string) => {
+
+  // 1. Read current state synchronously from localStorage to avoid React async delay
+  const currentPosts: Post[] = JSON.parse(localStorage.getItem('mydiet_posts') || '[]');
+  const targetPost = currentPosts.find(p => p.id === postId);
+  const targetComment = targetPost?.comments.find(c => c.id === commentId);
+  
+  // Determine whether this action is like or unlike
+  const isNowLiked = targetComment ? !targetComment.liked : true;
+
+  // 2. Prepare update logic for the post data
+  const updater = (p: Post) => {
+    if (p.id !== postId) return p;
+    return {
+      ...p,
+      comments: p.comments.map(c => {
+        if (c.id === commentId) {
+          return { 
+            ...c, 
+            liked: isNowLiked, 
+            likes: isNowLiked ? c.likes + 1 : c.likes - 1 
+          };
+        }
+        return c;
+      })
+    };
+  };
+
+  // 3. Update UI state and persist changes to localStorage (ensures data is not lost on refresh)
+  setPostsState(prev => {
+    const updated = prev.map(updater);
+    saveState('mydiet_posts', updated); // <-- Key fix: persist to local storage
+    return updated;
+  });
+
+  setTrendingPostsState(prev => {
+    const updated = prev.map(updater);
+    saveState('mydiet_tposts', updated); // <-- Key fix: persist to local storage
+    return updated;
+  });
+
+  // 4. Send the updated like status to the Spring Boot backend
+  try {
+    await fetch(`http://localhost:8080/api/posts/comments/${commentId}/like?isLike=${isNowLiked}`, {
+      method: 'PUT'
+    });
+  } catch (error) {
+    console.error("Error updating comment like:", error);
+  }
+
+}, []);
 
   // Bug 4: Refresh — shuffle posts order
   const refreshPosts = useCallback(() => {
@@ -648,6 +830,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addPost,
       toggleFollow,
       addComment, deleteComment, addReplyToComment, updatePostComments, refreshPosts, togglePostLike,
+      toggleCommentLike,
       signIn, signUp, signOut,
     }}>
       {children}

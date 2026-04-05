@@ -13,13 +13,10 @@ function CommentItem({ comment, postId, depth = 0, onReplyTo }: {
   onReplyTo: (commentId: string, author: string) => void
 }) {
   const navigate = useNavigate()
-  const { deleteComment, updatePostComments, posts, trendingPostsList } = useApp()
-  const [liked, setLiked] = useState(false)
-  const displayLikes = liked ? comment.likes + 1 : comment.likes
+  const { deleteComment, updatePostComments, posts, trendingPostsList, toggleCommentLike } = useApp()
   const isOwn = comment.author === 'You'
-
   const handleLike = () => {
-    setLiked(!liked)
+    toggleCommentLike(postId, comment.id)
   }
 
   const handleDelete = () => {
@@ -56,8 +53,8 @@ function CommentItem({ comment, postId, depth = 0, onReplyTo }: {
           <p className="text-[13px] leading-relaxed text-white/60 break-words">{comment.text}</p>
           <div className="mt-1 flex gap-4">
             <button onClick={handleLike}
-              className={`flex items-center gap-1 text-[11px] transition ${liked ? 'text-[#F472B6]' : 'text-white/30 hover:text-[#F472B6]'}`}>
-              <Heart className={`h-3 w-3 ${liked ? 'fill-[#F472B6]' : ''}`} /> {displayLikes}
+              className={`flex items-center gap-1 text-[11px] transition ${comment.liked ? 'text-[#F472B6]' : 'text-white/30 hover:text-[#F472B6]'}`}>
+              <Heart className={`h-3 w-3 ${comment.liked ? 'fill-[#F472B6]' : ''}`} /> {comment.likes}
             </button>
             <button onClick={() => onReplyTo(comment.id, comment.author)}
               className="flex items-center gap-1 text-[11px] text-white/30 transition hover:text-white">
