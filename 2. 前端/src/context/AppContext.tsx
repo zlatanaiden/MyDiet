@@ -109,8 +109,8 @@ interface AppContextType {
   togglePostLike: (postId: string) => void
   toggleCommentLike: (postId: string, commentId: string) => void
   // Auth
-  signIn: (email: string, password: string, remember?: boolean) => AuthResult
-  signUp: (name: string, email: string, password: string) => AuthResult
+  signIn: (email: string, password: string, remember?: boolean) => Promise<AuthResult>
+  signUp: (name: string, email: string, password: string) => Promise<AuthResult>
   signOut: () => void
 }
 
@@ -432,8 +432,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 // --- MODIFIED: Create a new post and send it to the backend ---
   const addPost = useCallback(async (post: Post) => {
     try {
+      const myDbId = Number(localStorage.getItem('mydiet_user_db_id')) || 1;
       // 1. Prepare the data payload matching the Spring Boot entity
       const postData = {
+        userId: myDbId,
         title: post.title,
         content: post.content,
         imageUrl: post.image,
@@ -505,14 +507,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 const addComment = useCallback(async (postId: string, comment: Comment) => {
 
   try {
-
+    const myDbId = Number(localStorage.getItem('mydiet_user_db_id')) || 1;
     // 1. Send a POST request (extract the text field from the comment object)
     const response = await fetch(`http://localhost:8080/api/posts/${postId}/comments`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ content: comment.text }), 
+      body: JSON.stringify({ content: comment.text, userId: myDbId }), 
     });
 
     if (!response.ok) throw new Error('Failed to add comment');
@@ -708,96 +710,83 @@ const toggleCommentLike = useCallback(async (postId: string, commentId: string) 
     })
   }, [])
 
-  // Sign in — validate saved account and start a session
-  const signIn = useCallback((email: string, password: string, remember = false): AuthResult => {
+  // Sign in — connect to backend
+  const signIn = useCallback(async (email: string, password: string, remember = false): Promise<AuthResult> => {
     const normalizedEmail = normalizeEmail(email)
     const normalizedPassword = password.trim()
-    const accounts = loadAccounts()
-    const account = accounts.find(acc => acc.email === normalizedEmail)
+    try {
+      const response = await fetch('http://localhost:8080/api/users/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, password: normalizedPassword })
+      })
+      const data = await response.json()
+      if (!response.ok) return { success: false, message: data.error || 'Login failed' }
 
-    if (!account) {
-      return { success: false, message: 'No account found for this email' }
+      const loggedUser = data.user
+      localStorage.setItem('mydiet_logged_in', 'true')
+      localStorage.setItem('mydiet_user_email', normalizedEmail)
+      localStorage.setItem('mydiet_user_db_id', String(loggedUser.id))
+      if (remember) localStorage.setItem('mydiet_remembered_email', normalizedEmail)
+      else localStorage.removeItem('mydiet_remembered_email')
+
+      setUserState(prev => {
+        const updated = { ...prev, name: loggedUser.username }
+        saveState('mydiet_user', updated)
+        return updated
+      })
+      setIsLoggedIn(true)
+      return { success: true }
+    } catch (err) {
+      return { success: false, message: 'Backend connection failed' }
     }
-
-    if (account.password !== normalizedPassword) {
-      return { success: false, message: 'Incorrect password' }
-    }
-
-    localStorage.setItem('mydiet_logged_in', 'true')
-    localStorage.setItem('mydiet_user_email', normalizedEmail)
-    if (remember) localStorage.setItem('mydiet_remembered_email', normalizedEmail)
-    else localStorage.removeItem('mydiet_remembered_email')
-
-    setUserState(prev => {
-      const updated = { ...prev, name: account.name || prev.name }
-      saveState('mydiet_user', updated)
-      return updated
-    })
-    setIsLoggedIn(true)
-    return { success: true }
   }, [])
 
-  // Sign up — create account if email does not already exist
-  const signUp = useCallback((name: string, email: string, password: string): AuthResult => {
+  // Sign up — connect to backend
+  const signUp = useCallback(async (name: string, email: string, password: string): Promise<AuthResult> => {
     const normalizedEmail = normalizeEmail(email)
     const normalizedPassword = password.trim()
     const displayName = name.trim() || 'New User'
 
-    const accounts = loadAccounts()
-    const exists = accounts.some(acc => acc.email === normalizedEmail)
-    if (exists) {
-      return { success: false, message: 'This email has already been registered' }
+    try {
+      const response = await fetch('http://localhost:8080/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: displayName, email: normalizedEmail, password: normalizedPassword })
+      })
+      const data = await response.json()
+      if (!response.ok) return { success: false, message: data.error || 'Registration failed' }
+
+      const regUser = data.user
+      localStorage.setItem('mydiet_logged_in', 'true')
+      localStorage.setItem('mydiet_user_email', normalizedEmail)
+      localStorage.setItem('mydiet_user_db_id', String(regUser.id))
+
+      // Clear app-specific persisted data for a fresh new profile
+      localStorage.removeItem('mydiet_daily')
+      localStorage.removeItem('mydiet_streak')
+      localStorage.removeItem('mydiet_streak_today')
+      localStorage.removeItem('mydiet_plan')
+      localStorage.removeItem('mydiet_plan_done')
+      localStorage.removeItem('mydiet_unit')
+
+      const freshUser: UserProfile = { ...defaultUser, name: displayName, uid: `UID-${Date.now()}` }
+      saveState('mydiet_user', freshUser)
+      setUserState(freshUser)
+
+      setStreak(0)
+      saveState('mydiet_streak', 0)
+      setStreakCheckedToday(false)
+      saveState('mydiet_streak_today', false)
+      setDailyRecords({})
+      saveState('mydiet_daily', {})
+
+      setIsLoggedIn(true)
+      return { success: true }
+    } catch (err) {
+      return { success: false, message: 'Backend connection failed' }
     }
-
-    const nextAccounts = [
-      ...accounts,
-      {
-        email: normalizedEmail,
-        password: normalizedPassword,
-        name: displayName,
-        createdAt: new Date().toISOString(),
-      },
-    ]
-    saveAccounts(nextAccounts)
-
-    // Clear app-specific persisted data for a fresh new profile
-    localStorage.removeItem('mydiet_daily')
-    localStorage.removeItem('mydiet_streak')
-    localStorage.removeItem('mydiet_streak_today')
-    localStorage.removeItem('mydiet_plan')
-    localStorage.removeItem('mydiet_plan_done')
-    localStorage.removeItem('mydiet_unit')
-
-    const freshUser: UserProfile = {
-      ...defaultUser,
-      name: displayName,
-      uid: `UID-${Date.now()}`,
-      age: 0,
-      gender: '',
-      height: 0,
-      weight: 0,
-      targetWeight: 0,
-      goal: 'lose',
-      activityLevel: '',
-      allergies: [],
-      restrictions: [],
-      bmi: 0,
-      daysRemaining: 0,
-      posts: 0,
-      totalLikes: 0,
-      savedRecipes: 0,
-      followers: 0,
-      following: 0,
-    }
-    saveState('mydiet_user', freshUser)
-    setUserState(freshUser)
-
-    setStreak(0)
-    saveState('mydiet_streak', 0)
-    setStreakCheckedToday(false)
-    saveState('mydiet_streak_today', false)
-    setDailyRecords({})
-    saveState('mydiet_daily', {})
+  }, [])
     setPlanCompleted(false)
     saveState('mydiet_plan_done', false)
     setPlan(weeklyPlan)

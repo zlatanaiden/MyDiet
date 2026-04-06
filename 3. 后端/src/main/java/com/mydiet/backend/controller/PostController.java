@@ -47,7 +47,9 @@ public class PostController {
      */
     @PostMapping
     public Post createPost(@RequestBody Post newPost) {
-        newPost.setUserId(1L); // Temporarily hardcoded
+        if (newPost.getUserId() == null) {
+            newPost.setUserId(1L); // Fallback if frontend forgot
+        }
         return postRepository.save(newPost);
     }
 
@@ -59,8 +61,9 @@ public class PostController {
     public Comment addComment(@PathVariable Long postId, @RequestBody Comment newComment) {
         // Link the comment to the specific post
         newComment.setPostId(postId);
-        // Temporarily hardcode the commenter's ID to 2 (e.g., ChefMike) so we can distinguish it
-        newComment.setUserId(2L); 
+        if (newComment.getUserId() == null) {
+            newComment.setUserId(1L); // Fallback
+        }
         
         return commentRepository.save(newComment);
     }
