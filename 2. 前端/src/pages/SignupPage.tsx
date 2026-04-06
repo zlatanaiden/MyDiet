@@ -30,7 +30,7 @@ export default function SignupPage() {
     return errs
   }
 
-  const handleCreateAccount = (e: React.FormEvent) => {
+  const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault()
     const errs = validate()
     if (Object.keys(errs).length > 0) {
@@ -38,7 +38,7 @@ export default function SignupPage() {
       return
     }
 
-    const result = signUp(`${firstName} ${lastName}`, email.trim().toLowerCase(), password)
+    const result = await signUp(`${firstName} ${lastName}`, email.trim().toLowerCase(), password)
     if (!result.success) {
       setErrors({ email: result.message || 'Unable to create account' })
       return

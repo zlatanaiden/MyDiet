@@ -34,4 +34,10 @@ public class Comment {
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Transient
+    private String authorName;
+
+    @Transient
+    private String authorAvatarGradient;
 }

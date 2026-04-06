@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState<{ email?: string; password?: string; general?: string }>({})
 
-  const handleSignIn = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     const newErrors: { email?: string; password?: string; general?: string } = {}
     const normalizedEmail = email.trim().toLowerCase()
@@ -27,7 +27,7 @@ export default function LoginPage() {
       return
     }
 
-    const result = signIn(normalizedEmail, password, remember)
+    const result = await signIn(normalizedEmail, password, remember)
     if (!result.success) {
       setErrors({ general: result.message || 'Unable to sign in' })
       return
