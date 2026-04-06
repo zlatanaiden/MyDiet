@@ -50,4 +50,10 @@ public class Post {
     // @Transient means "do not try to find this column in the MySQL database".
     @Transient
     private List<Comment> comments;
+
+    @Transient
+    private String authorName;
+
+    @Transient
+    private String authorAvatarGradient;
 }

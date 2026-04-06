@@ -181,8 +181,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           title: bp.title,
           content: bp.content,
           image: bp.imageUrl || '',
-          author: bp.userId === 1 ? 'Sarah_Fit' : (bp.userId === 2 ? 'ChefMike' : `User${bp.userId}`),
-          avatarGradient: bp.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]',
+          author: bp.authorName || (bp.userId === 1 ? 'Sarah_Fit' : (bp.userId === 2 ? 'ChefMike' : `User${bp.userId}`)),
+          authorId: String(bp.userId),
+          avatarGradient: bp.authorAvatarGradient || (bp.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]'),
           likes: bp.likes || 0,
           liked: false,
           tags: bp.tags ? JSON.parse(bp.tags) : [],
@@ -191,8 +192,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           comments: bp.comments ? bp.comments.map((c: any) => ({
             id: String(c.id),
             text: c.content,
-            author: c.userId === 1 ? 'Sarah_Fit' : 'ChefMike',
-            avatarGradient: c.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]',
+            author: c.authorName || (c.userId === 1 ? 'Sarah_Fit' : 'ChefMike'),
+            authorId: String(c.userId),
+            avatarGradient: c.authorAvatarGradient || (c.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]'),
             time: 'Just now',
             likes: c.likes || 0,
             liked: false,
@@ -463,8 +465,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         title: savedPost.title,
         content: savedPost.content,
         image: savedPost.imageUrl || '',
-        author: 'Sarah_Fit', // Temporarily hardcoded until auth is ready
-        avatarGradient: 'from-[#FBBF24] to-[#F97316]',
+        author: savedPost.authorName || 'Sarah_Fit',
+        authorId: String(myDbId),
+        avatarGradient: savedPost.authorAvatarGradient || 'from-[#FBBF24] to-[#F97316]',
         likes: 0,
         liked: false,
         tags: savedPost.tags ? JSON.parse(savedPost.tags) : [],
@@ -527,6 +530,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const newFrontendComment: Comment = {
         ...comment,
         id: String(savedComment.id),
+        author: savedComment.authorName || comment.author,
+        authorId: String(myDbId),
+        avatarGradient: savedComment.authorAvatarGradient || comment.avatarGradient,
       };
 
       // 4. Update UI state (posts list)
@@ -731,7 +737,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       else localStorage.removeItem('mydiet_remembered_email')
 
       setUserState(prev => {
-        const updated = { ...prev, name: loggedUser.username }
+        const updated = { ...prev, name: loggedUser.username, uid: `UID-${String(loggedUser.id).padStart(6, '0')}` }
         saveState('mydiet_user', updated)
         return updated
       })
@@ -770,7 +776,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('mydiet_plan_done')
       localStorage.removeItem('mydiet_unit')
 
-      const freshUser: UserProfile = { ...defaultUser, name: displayName, uid: `UID-${Date.now()}` }
+      const freshUser: UserProfile = { ...defaultUser, name: displayName, uid: `UID-${String(regUser.id).padStart(6, '0')}` }
       saveState('mydiet_user', freshUser)
       setUserState(freshUser)
 
