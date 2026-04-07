@@ -2,8 +2,10 @@ package com.mydiet.backend.controller;
 
 import com.mydiet.backend.entity.Post;
 import com.mydiet.backend.entity.Comment;
+import com.mydiet.backend.entity.User;
 import com.mydiet.backend.repository.PostRepository;
 import com.mydiet.backend.repository.CommentRepository;
+import com.mydiet.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,9 +22,11 @@ public class PostController {
     @Autowired
     private PostRepository postRepository;
 
-    // 1. Inject the CommentRepository so we can fetch and save comments
     @Autowired
     private CommentRepository commentRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     /**
      * Get all posts (with their comments attached)
@@ -34,7 +38,20 @@ public class PostController {
         
         // Loop through each post, fetch its comments from the database, and attach them
         for (Post post : posts) {
+            User author = userRepository.findById(post.getUserId()).orElse(null);
+            if (author != null) {
+                post.setAuthorName(author.getUsername());
+                post.setAuthorAvatarGradient(author.getAvatarGradient());
+            }
+
             List<Comment> postComments = commentRepository.findByPostId(post.getId());
+            for (Comment c : postComments) {
+                User cAuthor = userRepository.findById(c.getUserId()).orElse(null);
+                if (cAuthor != null) {
+                    c.setAuthorName(cAuthor.getUsername());
+                    c.setAuthorAvatarGradient(cAuthor.getAvatarGradient());
+                }
+            }
             post.setComments(postComments);
         }
         
@@ -47,8 +64,16 @@ public class PostController {
      */
     @PostMapping
     public Post createPost(@RequestBody Post newPost) {
-        newPost.setUserId(1L); // Temporarily hardcoded
-        return postRepository.save(newPost);
+        if (newPost.getUserId() == null) {
+            newPost.setUserId(1L); // Fallback if frontend forgot
+        }
+        Post savedPost = postRepository.save(newPost);
+        User author = userRepository.findById(savedPost.getUserId()).orElse(null);
+        if (author != null) {
+            savedPost.setAuthorName(author.getUsername());
+            savedPost.setAuthorAvatarGradient(author.getAvatarGradient());
+        }
+        return savedPost;
     }
 
     /**
@@ -59,10 +84,17 @@ public class PostController {
     public Comment addComment(@PathVariable Long postId, @RequestBody Comment newComment) {
         // Link the comment to the specific post
         newComment.setPostId(postId);
-        // Temporarily hardcode the commenter's ID to 2 (e.g., ChefMike) so we can distinguish it
-        newComment.setUserId(2L); 
+        if (newComment.getUserId() == null) {
+            newComment.setUserId(1L); // Fallback
+        }
         
-        return commentRepository.save(newComment);
+        Comment savedComment = commentRepository.save(newComment);
+        User author = userRepository.findById(savedComment.getUserId()).orElse(null);
+        if (author != null) {
+            savedComment.setAuthorName(author.getUsername());
+            savedComment.setAuthorAvatarGradient(author.getAvatarGradient());
+        }
+        return savedComment;
     }
 
     /**

@@ -41,6 +41,13 @@ public class User {
     @Column(name = "avatar_gradient")
     private String avatarGradient;
 
+    // Login required fields
+    @Column(nullable = false)
+    private String password;
+
+    @Column(unique = true)
+    private String email;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 }

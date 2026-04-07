@@ -50,6 +50,7 @@ export interface Post {
   title: string
   image: string
   author: string
+  authorId?: string
   avatarGradient: string
   likes: number
   liked: boolean
@@ -62,6 +63,7 @@ export interface Post {
 export interface Comment {
   id: string
   author: string
+  authorId?: string
   avatarGradient: string
   text: string
   likes: number

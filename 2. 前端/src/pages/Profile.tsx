@@ -24,7 +24,9 @@ export default function Profile() {
   const displayUser = isCurrentUser ? currentUser : {
     ...currentUser,
     name: profileName,
-    uid: `UID-${Math.abs(profileName!.hashCode ? profileName!.hashCode() : 12345)}`, // Mock a UID
+    uid: profilePosts.length > 0 && profilePosts[0].authorId
+      ? `UID-${String(profilePosts[0].authorId).padStart(6, '0')}`
+      : `UID-${String(Math.abs(profileName!.split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0)) % 1000000).padStart(6, '0')}`,
     followers: Math.floor(Math.random() * 500) + 100,
     following: Math.floor(Math.random() * 300) + 50,
     totalLikes: profilePosts.reduce((sum, p) => sum + p.likes, 0),
@@ -69,7 +71,7 @@ export default function Profile() {
             </div>
             <div className="flex-1">
               <h1 className="text-[22px] font-bold text-white">{displayUser.name}</h1>
-              <p className="text-[13px] text-white/40">{isCurrentUser ? displayUser.uid : 'Community Member'}</p>
+              <p className="text-[13px] text-white/40">{displayUser.uid}</p>
               
               {isCurrentUser && (
                 <div className="mt-2 flex gap-3">
