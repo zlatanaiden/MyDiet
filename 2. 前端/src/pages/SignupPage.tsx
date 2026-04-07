@@ -30,22 +30,24 @@ export default function SignupPage() {
     return errs
   }
 
-  const handleCreateAccount = (e: React.FormEvent) => {
-    e.preventDefault()
-    const errs = validate()
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs)
-      return
-    }
+const handleCreateAccount = async (e: React.FormEvent) => {
+  e.preventDefault()
+  const errs = validate()
 
-    const result = signUp(`${firstName} ${lastName}`, email.trim().toLowerCase(), password)
-    if (!result.success) {
-      setErrors({ email: result.message || 'Unable to create account' })
-      return
-    }
-
-    navigate('/plan', { replace: true })
+  if (Object.keys(errs).length > 0) {
+    setErrors(errs)
+    return
   }
+
+  const result = await signUp(`${firstName} ${lastName}`, email.trim().toLowerCase(), password)
+
+  if (!result.success) {
+    setErrors({ email: result.message || 'Unable to create account' })
+    return
+  }
+
+  navigate('/plan', { replace: true })
+}
 
   const inputClass = (field: string) =>
     `flex h-[42px] items-center gap-2.5 rounded-xl border bg-white/5 px-3.5 transition ${

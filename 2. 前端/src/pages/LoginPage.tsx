@@ -13,29 +13,31 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState<{ email?: string; password?: string; general?: string }>({})
 
-  const handleSignIn = (e: React.FormEvent) => {
-    e.preventDefault()
-    const newErrors: { email?: string; password?: string; general?: string } = {}
-    const normalizedEmail = email.trim().toLowerCase()
+const handleSignIn = async (e: React.FormEvent) => {
+  e.preventDefault()
 
-    if (!normalizedEmail) newErrors.email = 'Email is required'
-    else if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) newErrors.email = 'Please enter a valid email address'
-    if (!password) newErrors.password = 'Password is required'
+  const newErrors: { email?: string; password?: string; general?: string } = {}
+  const normalizedEmail = email.trim().toLowerCase()
 
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors)
-      return
-    }
+  if (!normalizedEmail) newErrors.email = 'Email is required'
+  else if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) newErrors.email = 'Please enter a valid email address'
+  if (!password) newErrors.password = 'Password is required'
 
-    const result = signIn(normalizedEmail, password, remember)
-    if (!result.success) {
-      setErrors({ general: result.message || 'Unable to sign in' })
-      return
-    }
-
-    if (planCompleted) navigate('/', { replace: true })
-    else navigate('/plan', { replace: true })
+  if (Object.keys(newErrors).length > 0) {
+    setErrors(newErrors)
+    return
   }
+
+  const result = await signIn(normalizedEmail, password, remember)
+
+  if (!result.success) {
+    setErrors({ general: result.message || 'Unable to sign in' })
+    return
+  }
+
+  if (planCompleted) navigate('/', { replace: true })
+  else navigate('/plan', { replace: true })
+}
 
   return (
     <div className="relative flex min-h-screen w-full" style={{ background: 'linear-gradient(135deg, #0F0C29 0%, #302B63 50%, #24243E 100%)' }}>

@@ -109,8 +109,8 @@ interface AppContextType {
   togglePostLike: (postId: string) => void
   toggleCommentLike: (postId: string, commentId: string) => void
   // Auth
-  signIn: (email: string, password: string, remember?: boolean) => AuthResult
-  signUp: (name: string, email: string, password: string) => AuthResult
+  signIn: (email: string, password: string, remember?: boolean) => Promise<AuthResult>
+  signUp: (name: string, email: string, password: string) => Promise<AuthResult>
   signOut: () => void
 }
 
@@ -150,7 +150,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<UserProfile>(() => ({ ...defaultUser, ...loadState('mydiet_user', defaultUser) }))
   const [streak, setStreak] = useState(() => loadState('mydiet_streak', 0))
   const [streakCheckedToday, setStreakCheckedToday] = useState(() => loadState('mydiet_streak_today', false))
-  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('mydiet_logged_in') === 'true')
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {return !!localStorage.getItem('user') || !!sessionStorage.getItem('user')})
   const [plan, setPlan] = useState<DayPlan[]>(() => loadState('mydiet_plan', weeklyPlan))
   const [planCompleted, setPlanCompleted] = useState(() => loadState('mydiet_plan_done', false))
   const [unit, setUnitState] = useState<'metric' | 'imperial'>(() => loadState('mydiet_unit', 'metric'))
@@ -709,111 +709,93 @@ const toggleCommentLike = useCallback(async (postId: string, commentId: string) 
   }, [])
 
   // Sign in — validate saved account and start a session
-  const signIn = useCallback((email: string, password: string, remember = false): AuthResult => {
-    const normalizedEmail = normalizeEmail(email)
-    const normalizedPassword = password.trim()
-    const accounts = loadAccounts()
-    const account = accounts.find(acc => acc.email === normalizedEmail)
+  const signIn = useCallback(async (email: string, password: string, remember = false): Promise<AuthResult> => {
+  try {
+    const normalizedEmail = email.trim().toLowerCase()
 
-    if (!account) {
-      return { success: false, message: 'No account found for this email' }
+    const response = await fetch('http://localhost:8080/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: normalizedEmail,
+        password
+      })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      return { success: false, message: data.message || 'Login failed' }
     }
 
-    if (account.password !== normalizedPassword) {
-      return { success: false, message: 'Incorrect password' }
+    if (remember) {
+      localStorage.setItem('user', JSON.stringify(data))
+      localStorage.setItem('mydiet_remembered_email', normalizedEmail)
+      sessionStorage.removeItem('user')
+    } else {
+      sessionStorage.setItem('user', JSON.stringify(data))
+      localStorage.removeItem('user')
+      localStorage.removeItem('mydiet_remembered_email')
     }
-
-    localStorage.setItem('mydiet_logged_in', 'true')
-    localStorage.setItem('mydiet_user_email', normalizedEmail)
-    if (remember) localStorage.setItem('mydiet_remembered_email', normalizedEmail)
-    else localStorage.removeItem('mydiet_remembered_email')
 
     setUserState(prev => {
-      const updated = { ...prev, name: account.name || prev.name }
+      const updated = {
+        ...prev,
+        name: data.username || prev.name
+      }
       saveState('mydiet_user', updated)
       return updated
     })
+
     setIsLoggedIn(true)
+
     return { success: true }
+  } catch (error) {
+    return { success: false, message: 'Server error' }
+  }
   }, [])
 
   // Sign up — create account if email does not already exist
-  const signUp = useCallback((name: string, email: string, password: string): AuthResult => {
-    const normalizedEmail = normalizeEmail(email)
-    const normalizedPassword = password.trim()
-    const displayName = name.trim() || 'New User'
+  const signUp = useCallback(async (name: string, email: string, password: string): Promise<AuthResult> => {
+  try {
+    const response = await fetch('http://localhost:8080/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: name,
+        email: email.trim().toLowerCase(),
+        password
+      })
+    })
 
-    const accounts = loadAccounts()
-    const exists = accounts.some(acc => acc.email === normalizedEmail)
-    if (exists) {
-      return { success: false, message: 'This email has already been registered' }
+    const data = await response.json()
+
+    if (!response.ok) {
+      return { success: false, message: data.message || 'Signup failed' }
     }
 
-    const nextAccounts = [
-      ...accounts,
-      {
-        email: normalizedEmail,
-        password: normalizedPassword,
-        name: displayName,
-        createdAt: new Date().toISOString(),
-      },
-    ]
-    saveAccounts(nextAccounts)
-
-    // Clear app-specific persisted data for a fresh new profile
-    localStorage.removeItem('mydiet_daily')
-    localStorage.removeItem('mydiet_streak')
-    localStorage.removeItem('mydiet_streak_today')
-    localStorage.removeItem('mydiet_plan')
-    localStorage.removeItem('mydiet_plan_done')
-    localStorage.removeItem('mydiet_unit')
-
-    const freshUser: UserProfile = {
-      ...defaultUser,
-      name: displayName,
-      uid: `UID-${Date.now()}`,
-      age: 0,
-      gender: '',
-      height: 0,
-      weight: 0,
-      targetWeight: 0,
-      goal: 'lose',
-      activityLevel: '',
-      allergies: [],
-      restrictions: [],
-      bmi: 0,
-      daysRemaining: 0,
-      posts: 0,
-      totalLikes: 0,
-      savedRecipes: 0,
-      followers: 0,
-      following: 0,
-    }
-    saveState('mydiet_user', freshUser)
-    setUserState(freshUser)
-
-    setStreak(0)
-    saveState('mydiet_streak', 0)
-    setStreakCheckedToday(false)
-    saveState('mydiet_streak_today', false)
-    setDailyRecords({})
-    saveState('mydiet_daily', {})
-    setPlanCompleted(false)
-    saveState('mydiet_plan_done', false)
-    setPlan(weeklyPlan)
-    saveState('mydiet_plan', weeklyPlan)
-    setUnitState('metric')
-    saveState('mydiet_unit', 'metric')
-
+    localStorage.setItem('user', JSON.stringify(data))
     localStorage.setItem('mydiet_logged_in', 'true')
-    localStorage.setItem('mydiet_user_email', normalizedEmail)
+
+    setUserState(prev => ({
+      ...prev,
+      name: data.username
+    }))
+
     setIsLoggedIn(true)
+
     return { success: true }
-  }, [])
+
+  } catch (error) {
+    return { success: false, message: 'Server error' }
+  }
+}, [])
 
   // Sign out — clear session but keep data in localStorage for sign-back-in
   const signOut = useCallback(() => {
-    localStorage.removeItem('mydiet_logged_in')
+    localStorage.removeItem('user')
+    sessionStorage.removeItem('user')
+    localStorage.removeItem('mydiet_remembered_email')
     setIsLoggedIn(false)
   }, [])
 
