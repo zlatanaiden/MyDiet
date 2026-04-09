@@ -40,4 +40,8 @@ public class Comment {
 
     @Transient
     private String authorAvatarGradient;
+
+    // CRITICAL FIX: Flag for comment like status
+    @Transient
+    private Boolean isLikedByCurrentUser;
 }

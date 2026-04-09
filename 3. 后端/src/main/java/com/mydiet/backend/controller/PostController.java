@@ -11,9 +11,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/**
- * Post Controller - Handles HTTP requests for posts and their comments.
- */
 @RestController
 @RequestMapping("/api/posts")
 @CrossOrigin(origins = "*")
@@ -29,27 +26,43 @@ public class PostController {
     private UserRepository userRepository;
 
     /**
-     * Get all posts (with their comments attached)
-     * Endpoint: GET http://localhost:8080/api/posts
+     * Get all posts (with comments and dynamic Like status for the current user)
      */
     @GetMapping
-    public List<Post> getAllPosts() {
+    public List<Post> getAllPosts(@RequestParam(required = false) Long userId) {
         List<Post> posts = postRepository.findAll();
         
-        // Loop through each post, fetch its comments from the database, and attach them
         for (Post post : posts) {
+            // Set Author details
             User author = userRepository.findById(post.getUserId()).orElse(null);
             if (author != null) {
                 post.setAuthorName(author.getUsername());
                 post.setAuthorAvatarGradient(author.getAvatarGradient());
             }
 
+            // CRITICAL FIX: Check if the specific user liked this post
+            if (userId != null) {
+                int likeCount = postRepository.checkUserLikedPost(post.getId(), userId);
+                post.setIsLikedByCurrentUser(likeCount > 0);
+            } else {
+                post.setIsLikedByCurrentUser(false);
+            }
+
+            // Process Comments
             List<Comment> postComments = commentRepository.findByPostId(post.getId());
             for (Comment c : postComments) {
                 User cAuthor = userRepository.findById(c.getUserId()).orElse(null);
                 if (cAuthor != null) {
                     c.setAuthorName(cAuthor.getUsername());
                     c.setAuthorAvatarGradient(cAuthor.getAvatarGradient());
+                }
+                
+                // CRITICAL FIX: Check if the specific user liked this comment
+                if (userId != null) {
+                    int commentLikeCount = commentRepository.checkUserLikedComment(c.getId(), userId);
+                    c.setIsLikedByCurrentUser(commentLikeCount > 0);
+                } else {
+                    c.setIsLikedByCurrentUser(false);
                 }
             }
             post.setComments(postComments);
@@ -58,14 +71,10 @@ public class PostController {
         return posts;
     }
 
-    /**
-     * Create a new post
-     * Endpoint: POST http://localhost:8080/api/posts
-     */
     @PostMapping
     public Post createPost(@RequestBody Post newPost) {
         if (newPost.getUserId() == null) {
-            newPost.setUserId(1L); // Fallback if frontend forgot
+            newPost.setUserId(1L); 
         }
         Post savedPost = postRepository.save(newPost);
         User author = userRepository.findById(savedPost.getUserId()).orElse(null);
@@ -76,16 +85,11 @@ public class PostController {
         return savedPost;
     }
 
-    /**
-     * --- NEW: Add a comment to a specific post ---
-     * Endpoint: POST http://localhost:8080/api/posts/{postId}/comments
-     */
     @PostMapping("/{postId}/comments")
     public Comment addComment(@PathVariable Long postId, @RequestBody Comment newComment) {
-        // Link the comment to the specific post
         newComment.setPostId(postId);
         if (newComment.getUserId() == null) {
-            newComment.setUserId(1L); // Fallback
+            newComment.setUserId(1L);
         }
         
         Comment savedComment = commentRepository.save(newComment);
@@ -98,38 +102,35 @@ public class PostController {
     }
 
     /**
-     * --- NEW: Toggle Like ---
-     * Endpoint: PUT http://localhost:8080/api/posts/{postId}/like?isLike=true
+     * Toggle Post Like (Writes to DB and Junction Table)
      */
     @PutMapping("/{postId}/like")
-    public Post toggleLike(@PathVariable Long postId, @RequestParam boolean isLike) {
-        // Find the target post
+    public Post toggleLike(@PathVariable Long postId, @RequestParam Long userId, @RequestParam boolean isLike) {
         Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
         
-        // Increase or decrease the like count
         if (isLike) {
+            postRepository.addPostLike(postId, userId);
             post.setLikes(post.getLikes() + 1);
         } else {
-            post.setLikes(Math.max(0, post.getLikes() - 1)); // Prevent negative likes
+            postRepository.removePostLike(postId, userId);
+            post.setLikes(Math.max(0, post.getLikes() - 1));
         }
         
         return postRepository.save(post);
     }
 
     /**
-     * --- NEW: Toggle Comment Like ---
-     * Endpoint: PUT http://localhost:8080/api/posts/comments/{commentId}/like?isLike=true
+     * Toggle Comment Like (Writes to DB and Junction Table)
      */
     @PutMapping("/comments/{commentId}/like")
-    public Comment toggleCommentLike(@PathVariable Long commentId, @RequestParam boolean isLike) {
-        // Find the target comment directly by its ID
-        Comment comment = commentRepository.findById(commentId)
-                .orElseThrow(() -> new RuntimeException("Comment not found"));
+    public Comment toggleCommentLike(@PathVariable Long commentId, @RequestParam Long userId, @RequestParam boolean isLike) {
+        Comment comment = commentRepository.findById(commentId).orElseThrow(() -> new RuntimeException("Comment not found"));
         
-        // Update the like count
         if (isLike) {
+            commentRepository.addCommentLike(commentId, userId);
             comment.setLikes(comment.getLikes() + 1);
         } else {
+            commentRepository.removeCommentLike(commentId, userId);
             comment.setLikes(Math.max(0, comment.getLikes() - 1));
         }
         

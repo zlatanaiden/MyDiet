@@ -56,4 +56,8 @@ public class Post {
 
     @Transient
     private String authorAvatarGradient;
+
+    // CRITICAL FIX: Flag to tell the frontend if the requesting user liked this post
+    @Transient
+    private Boolean isLikedByCurrentUser;
 }

@@ -63,6 +63,16 @@ CREATE TABLE `user_follows` (
   FOREIGN KEY (`following_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Create a junction table for comment likes
+CREATE TABLE `comment_likes` (
+  `comment_id` BIGINT NOT NULL,
+  `user_id` BIGINT NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`comment_id`, `user_id`),
+  FOREIGN KEY (`comment_id`) REFERENCES `comments`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ==========================================
 -- INSERT INITIAL MOCK DATA
 -- ==========================================
