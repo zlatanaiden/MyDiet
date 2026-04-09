@@ -171,52 +171,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const fetchRealPosts = async () => {
       try {
-        const response = await fetch('http://localhost:8080/api/posts')
-        if (!response.ok) throw new Error('Network request failed')
-
-        const backendData = await response.json()
-
-        // --- MODIFICATION START: Read local memory before parsing backend data ---
-        const localPosts: Post[] = JSON.parse(localStorage.getItem('mydiet_posts') || '[]');
+        const myDbId = localStorage.getItem('mydiet_user_db_id');
+        
+        const url = myDbId ? `http://localhost:8080/api/posts?userId=${myDbId}` : 'http://localhost:8080/api/posts';
+        const response = await fetch(url);
+        
+        if (!response.ok) throw new Error('Network request failed');
+        const backendData = await response.json();
 
         const transformedPosts: Post[] = backendData.map((bp: any) => {
-          // Retrieve historical state for this specific post
-          const oldPost = localPosts.find(lp => lp.id === String(bp.id));
-
-          // Format the numeric ID to a 6-digit string with leading zeros (e.g., 3 -> "000003")
-          const formattedId = `UID-${String(bp.userId).padStart(6, '0')}`;
+          const rawIdString = String(bp.userId).padStart(6, '0');
+          const displayId = `UID-${rawIdString}`;
 
           return {
             id: String(bp.id),
             title: bp.title,
             content: bp.content,
             image: bp.imageUrl || '',
-            // Fallback to the formatted ID if authorName is missing
-            author: bp.authorName || `User_${formattedId}`, 
-            authorId: String(bp.userId),
-            avatarGradient: bp.authorAvatarGradient || (bp.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]'),
-            
+            author: bp.authorName || (bp.userId === 1 ? 'Sarah_Fit' : (bp.userId === 2 ? 'ChefMike' : `User_${rawIdString}`)),
+            authorId: displayId,
+            avatarGradient: bp.authorAvatarGradient || (bp.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : (bp.userId === 2 ? 'from-[#4ADE80] to-[#22D3EE]' : 'from-[#3B82F6] to-[#8B5CF6]')),
             
             likes: bp.likes || 0,
-            // CRITICAL FIX: Restore the post's liked status from local storage
-            liked: oldPost ? oldPost.liked : false, 
+            liked: bp.isLikedByCurrentUser === true || bp.likedByCurrentUser === true || false,
+            
             tags: bp.tags ? JSON.parse(bp.tags) : [],
 
-            // --- Map comments ---
             comments: bp.comments ? bp.comments.map((c: any) => {
-              // Retrieve historical state for this specific comment
-              const oldComment = oldPost?.comments.find(lc => lc.id === String(c.id));
+              const commentRawId = String(c.userId).padStart(6, '0');
               return {
                 id: String(c.id),
                 text: c.content,
-                author: c.authorName || (c.userId === 1 ? 'Sarah_Fit' : 'ChefMike'),
-                authorId: String(c.userId),
-                avatarGradient: c.authorAvatarGradient || (c.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]'),
+                author: c.authorName || (c.userId === 1 ? 'Sarah_Fit' : (c.userId === 2 ? 'ChefMike' : `User_${commentRawId}`)),
+                authorId: `UID-${commentRawId}`,
+                avatarGradient: c.authorAvatarGradient || (c.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : (c.userId === 2 ? 'from-[#4ADE80] to-[#22D3EE]' : 'from-[#3B82F6] to-[#8B5CF6]')),
                 time: 'Just now',
                 
                 likes: c.likes || 0,
-                // CRITICAL FIX: Restore the comment's liked status
-                liked: oldComment ? oldComment.liked : false, 
+                liked: c.isLikedByCurrentUser === true || c.likedByCurrentUser === true || false, 
                 replies: []
               };
             }) : [],
@@ -224,19 +216,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
             nutrition: bp.nutrition ? JSON.parse(bp.nutrition) : undefined
           };
         });
-        // --- MODIFICATION END ---
 
         setPostsState(transformedPosts);
         setTrendingPostsState(transformedPosts);
-        localStorage.setItem('mydiet_posts', JSON.stringify(transformedPosts));
-        localStorage.setItem('mydiet_tposts', JSON.stringify(transformedPosts));
       } catch (error) {
-        console.error("Oops, failed to fetch backend data. Is the backend running?", error)
+        console.error("Oops, failed to fetch backend data.", error);
       }
     }
 
-    fetchRealPosts()
-  }, [])
+    fetchRealPosts();
+  }, [isLoggedIn]);
   // -------------------------------------
 
   // Get current day's record — ALWAYS sync meal definitions from weekly plan
@@ -644,23 +633,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  // --- MODIFIED: Send like/unlike action to Spring Boot backend ---
+// --- MODIFIED: Post Like ---
   const togglePostLike = useCallback(async (postId: string) => {
     let isNowLiked = false;
+    const myDbId = localStorage.getItem('mydiet_user_db_id');
+    if (!myDbId) return; // 未登录不能点赞
 
-    // 1. Optimistic UI Update: Make the heart turn red instantly for a snappy user experience
+    // 1. Optimistic UI Update (视觉上先亮起红心，保证流畅度)
     const updater = (p: Post) => {
       if (p.id !== postId) return p;
-      isNowLiked = !p.liked; // Toggle the state
+      isNowLiked = !p.liked; 
       return { ...p, liked: isNowLiked, likes: isNowLiked ? p.likes + 1 : p.likes - 1 };
     };
 
     setPostsState(prev => prev.map(updater));
     setTrendingPostsState(prev => prev.map(updater));
 
-    // 2. Silently tell the backend to update the database
+    // 2. 告诉后端去数据库里更新 post_likes 表 (注意这里加上了 userId)
     try {
-      await fetch(`http://localhost:8080/api/posts/${postId}/like?isLike=${isNowLiked}`, {
+      await fetch(`http://localhost:8080/api/posts/${postId}/like?userId=${myDbId}&isLike=${isNowLiked}`, {
         method: 'PUT'
       });
     } catch (error) {
@@ -668,25 +659,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // --- MODIFIED: Fix React async state issue and persist data to localStorage ---
 
+  // --- MODIFIED: Comment Like ---
   const toggleCommentLike = useCallback(async (postId: string, commentId: string) => {
+    const myDbId = localStorage.getItem('mydiet_user_db_id');
+    if (!myDbId) return;
 
-    // 1. Read current state synchronously from localStorage to avoid React async delay
-    const currentPosts: Post[] = JSON.parse(localStorage.getItem('mydiet_posts') || '[]');
-    const targetPost = currentPosts.find(p => p.id === postId);
-    const targetComment = targetPost?.comments.find(c => c.id === commentId);
+    let isNowLiked = false;
 
-    // Determine whether this action is like or unlike
-    const isNowLiked = targetComment ? !targetComment.liked : true;
-
-    // 2. Prepare update logic for the post data
+    // 1. Optimistic UI Update
     const updater = (p: Post) => {
       if (p.id !== postId) return p;
       return {
         ...p,
         comments: p.comments.map(c => {
           if (c.id === commentId) {
+            isNowLiked = !c.liked;
             return {
               ...c,
               liked: isNowLiked,
@@ -698,28 +686,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
     };
 
-    // 3. Update UI state and persist changes to localStorage (ensures data is not lost on refresh)
-    setPostsState(prev => {
-      const updated = prev.map(updater);
-      saveState('mydiet_posts', updated); // <-- Key fix: persist to local storage
-      return updated;
-    });
+    setPostsState(prev => prev.map(updater));
+    setTrendingPostsState(prev => prev.map(updater));
 
-    setTrendingPostsState(prev => {
-      const updated = prev.map(updater);
-      saveState('mydiet_tposts', updated); // <-- Key fix: persist to local storage
-      return updated;
-    });
-
-    // 4. Send the updated like status to the Spring Boot backend
+    // 2. 告诉后端去更新数据库
     try {
-      await fetch(`http://localhost:8080/api/posts/comments/${commentId}/like?isLike=${isNowLiked}`, {
+      await fetch(`http://localhost:8080/api/posts/comments/${commentId}/like?userId=${myDbId}&isLike=${isNowLiked}`, {
         method: 'PUT'
       });
     } catch (error) {
       console.error("Error updating comment like:", error);
     }
-
   }, []);
 
   // Bug 4: Refresh — shuffle posts order
@@ -844,11 +821,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Sign out — clear session but keep data in localStorage for sign-back-in
+// Sign out — clear session and wipe identity to fetch fresh data for the next user
   const signOut = useCallback(() => {
+    // 1. Clear basic user auth info
     localStorage.removeItem('user')
     sessionStorage.removeItem('user')
     localStorage.removeItem('mydiet_remembered_email')
+    
+    // 2. Clear legacy local posts cache (good for cleanup)
+    localStorage.removeItem('mydiet_posts')
+    localStorage.removeItem('mydiet_tposts')
+    
+    localStorage.removeItem('mydiet_user_db_id')
+
+    // 3. Update state, which will trigger useEffect to fetch guest data
     setIsLoggedIn(false)
   }, [])
 
