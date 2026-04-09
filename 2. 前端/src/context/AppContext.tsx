@@ -167,7 +167,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [posts, setPostsState] = useState<Post[]>(() => loadState('mydiet_posts', []))
   const [trendingPostsList, setTrendingPostsState] = useState<Post[]>(() => loadState('mydiet_tposts', []))
 
-  // --- NEW: Fetch real post data from the backend ---
+// --- NEW: Fetch real post data from the backend ---
   useEffect(() => {
     const fetchRealPosts = async () => {
       try {
@@ -176,33 +176,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const backendData = await response.json()
 
-        const transformedPosts: Post[] = backendData.map((bp: any) => ({
-          id: String(bp.id),
-          title: bp.title,
-          content: bp.content,
-          image: bp.imageUrl || '',
-          author: bp.authorName || (bp.userId === 1 ? 'Sarah_Fit' : (bp.userId === 2 ? 'ChefMike' : `User${bp.userId}`)),
-          authorId: String(bp.userId),
-          avatarGradient: bp.authorAvatarGradient || (bp.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]'),
-          likes: bp.likes || 0,
-          liked: false,
-          tags: bp.tags ? JSON.parse(bp.tags) : [],
+        // --- MODIFICATION START: Read local memory before parsing backend data ---
+        const localPosts: Post[] = JSON.parse(localStorage.getItem('mydiet_posts') || '[]');
 
-          // --- Mapped comments ---
-          comments: bp.comments ? bp.comments.map((c: any) => ({
-            id: String(c.id),
-            text: c.content,
-            author: c.authorName || (c.userId === 1 ? 'Sarah_Fit' : 'ChefMike'),
-            authorId: String(c.userId),
-            avatarGradient: c.authorAvatarGradient || (c.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]'),
-            time: 'Just now',
-            likes: c.likes || 0,
-            liked: false,
-            replies: []
-          })) : [],
+        const transformedPosts: Post[] = backendData.map((bp: any) => {
+          // Retrieve historical state for this specific post
+          const oldPost = localPosts.find(lp => lp.id === String(bp.id));
 
-          nutrition: bp.nutrition ? JSON.parse(bp.nutrition) : undefined
-        }))
+          // Format the numeric ID to a 6-digit string with leading zeros (e.g., 3 -> "000003")
+          const formattedId = `UID-${String(bp.userId).padStart(6, '0')}`;
+
+          return {
+            id: String(bp.id),
+            title: bp.title,
+            content: bp.content,
+            image: bp.imageUrl || '',
+            // Fallback to the formatted ID if authorName is missing
+            author: bp.authorName || `User_${formattedId}`, 
+            authorId: String(bp.userId),
+            avatarGradient: bp.authorAvatarGradient || (bp.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]'),
+            
+            
+            likes: bp.likes || 0,
+            // CRITICAL FIX: Restore the post's liked status from local storage
+            liked: oldPost ? oldPost.liked : false, 
+            tags: bp.tags ? JSON.parse(bp.tags) : [],
+
+            // --- Map comments ---
+            comments: bp.comments ? bp.comments.map((c: any) => {
+              // Retrieve historical state for this specific comment
+              const oldComment = oldPost?.comments.find(lc => lc.id === String(c.id));
+              return {
+                id: String(c.id),
+                text: c.content,
+                author: c.authorName || (c.userId === 1 ? 'Sarah_Fit' : 'ChefMike'),
+                authorId: String(c.userId),
+                avatarGradient: c.authorAvatarGradient || (c.userId === 1 ? 'from-[#FBBF24] to-[#F97316]' : 'from-[#4ADE80] to-[#22D3EE]'),
+                time: 'Just now',
+                
+                likes: c.likes || 0,
+                // CRITICAL FIX: Restore the comment's liked status
+                liked: oldComment ? oldComment.liked : false, 
+                replies: []
+              };
+            }) : [],
+
+            nutrition: bp.nutrition ? JSON.parse(bp.nutrition) : undefined
+          };
+        });
+        // --- MODIFICATION END ---
 
         setPostsState(transformedPosts);
         setTrendingPostsState(transformedPosts);
@@ -431,13 +453,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [selectedYear, selectedMonth, selectedDate, updateDailyRecord])
 
-  // --- MODIFIED: Create a new post and send it to the backend ---
+// --- MODIFIED: Create a new post using REAL logged-in user data ---
   const addPost = useCallback(async (post: Post) => {
     try {
-      const myDbId = Number(localStorage.getItem('mydiet_user_db_id')) || 1;
-      // 1. Prepare the data payload matching the Spring Boot entity
+      // 1. Get the actual logged-in user data from storage
+      const currentUserData = JSON.parse(localStorage.getItem('user') || '{}');
+      const realUserId = currentUserData.id || 1; // Use real ID
+      const realUserName = currentUserData.username || 'Anonymous'; // Use real name
+      const realAvatar = currentUserData.avatarGradient || 'from-[#3B82F6] to-[#8B5CF6]'; // Default blueish avatar
+
+      // 2. Prepare the data payload
       const postData = {
-        userId: myDbId,
+        userId: realUserId, 
         title: post.title,
         content: post.content,
         imageUrl: post.image,
@@ -445,7 +472,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         nutrition: post.nutrition ? JSON.stringify(post.nutrition) : null
       };
 
-      // 2. Send the POST request to Spring Boot
+      // 3. Send the POST request
       const response = await fetch('http://localhost:8080/api/posts', {
         method: 'POST',
         headers: {
@@ -456,18 +483,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) throw new Error('Failed to create post');
 
-      // 3. Get the saved post back from the database (now it has a real ID!)
       const savedPost = await response.json();
 
-      // 4. Map the backend data back to the frontend UI format
+      // 4. Map the backend data using REAL user info
       const newFrontendPost: Post = {
         id: String(savedPost.id),
         title: savedPost.title,
         content: savedPost.content,
         image: savedPost.imageUrl || '',
-        author: savedPost.authorName || 'Sarah_Fit',
-        authorId: String(myDbId),
-        avatarGradient: savedPost.authorAvatarGradient || 'from-[#FBBF24] to-[#F97316]',
+        author: savedPost.authorName || realUserName,
+        authorId: `UID-${String(realUserId).padStart(6, '0')}`,                 
+        avatarGradient: savedPost.authorAvatarGradient || realAvatar,
         likes: 0,
         liked: false,
         tags: savedPost.tags ? JSON.parse(savedPost.tags) : [],
@@ -475,12 +501,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
         nutrition: savedPost.nutrition ? JSON.parse(savedPost.nutrition) : undefined
       };
 
-      // 5. Update the UI to show the new post immediately
+      // 5. Update the UI
       setPostsState(prev => [newFrontendPost, ...prev]);
       setTrendingPostsState(prev => [newFrontendPost, ...prev]);
 
     } catch (error) {
       console.error("Error creating post:", error);
+    }
+  }, []);
+
+  // --- MODIFIED: Send a new comment using REAL logged-in user data ---
+  const addComment = useCallback(async (postId: string, comment: Comment) => {
+    try {
+      // 1. Get the actual logged-in user data
+      const currentUserData = JSON.parse(localStorage.getItem('user') || '{}');
+      const realUserId = currentUserData.id || 1;
+      const realUserName = currentUserData.username || 'Anonymous';
+      const realAvatar = currentUserData.avatarGradient || 'from-[#3B82F6] to-[#8B5CF6]';
+
+      // 2. Send request
+      const response = await fetch(`http://localhost:8080/api/posts/${postId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content: comment.text, userId: realUserId }), // ✅ CRITICAL FIX: Use real ID
+      });
+
+      if (!response.ok) throw new Error('Failed to add comment');
+
+      const savedComment = await response.json();
+
+      // 3. Construct comment object using REAL user info
+      const newFrontendComment: Comment = {
+        ...comment,
+        id: String(savedComment.id),
+        author: savedComment.authorName || realUserName,
+        authorId: `UID-${String(realUserId).padStart(6, '0')}`,                    
+        avatarGradient: savedComment.authorAvatarGradient || realAvatar,
+      };
+
+      // 4. Update UI state
+      setPostsState(prev => prev.map(p => {
+        if (p.id === postId) {
+          return { ...p, comments: [newFrontendComment, ...p.comments] };
+        }
+        return p;
+      }));
+
+      setTrendingPostsState(prev => prev.map(p => {
+        if (p.id === postId) {
+          return { ...p, comments: [newFrontendComment, ...p.comments] };
+        }
+        return p;
+      }));
+
+    } catch (error) {
+      console.error("Error adding comment:", error);
     }
   }, []);
 
@@ -507,55 +584,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // --- MODIFIED: Send a new comment to the Spring Boot backend ---
 
-  const addComment = useCallback(async (postId: string, comment: Comment) => {
-
-    try {
-      const myDbId = Number(localStorage.getItem('mydiet_user_db_id')) || 1;
-      // 1. Send a POST request (extract the text field from the comment object)
-      const response = await fetch(`http://localhost:8080/api/posts/${postId}/comments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content: comment.text, userId: myDbId }),
-      });
-
-      if (!response.ok) throw new Error('Failed to add comment');
-
-      // 2. Retrieve the saved comment returned by the backend (includes generated ID)
-      const savedComment = await response.json();
-
-      // 3. Construct a complete frontend comment object
-      // Keep all original fields, but replace the id with the backend-generated one
-      const newFrontendComment: Comment = {
-        ...comment,
-        id: String(savedComment.id),
-        author: savedComment.authorName || comment.author,
-        authorId: String(myDbId),
-        avatarGradient: savedComment.authorAvatarGradient || comment.avatarGradient,
-      };
-
-      // 4. Update UI state (posts list)
-      setPostsState(prev => prev.map(p => {
-        if (p.id === postId) {
-          return { ...p, comments: [newFrontendComment, ...p.comments] };
-        }
-        return p;
-      }));
-
-      // 5. Update UI state (trending posts list)
-      setTrendingPostsState(prev => prev.map(p => {
-        if (p.id === postId) {
-          return { ...p, comments: [newFrontendComment, ...p.comments] };
-        }
-        return p;
-      }));
-
-    } catch (error) {
-      console.error("Error adding comment:", error);
-    }
-
-  }, []);
 
   // Bug 5: delete own comment
   const deleteCommentRecursive = (comments: Comment[], commentId: string): Comment[] => {
@@ -736,6 +764,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { success: false, message: data.message || 'Login failed' }
     }
 
+    // ... inside signIn function ...
     if (remember) {
       localStorage.setItem('user', JSON.stringify(data))
       localStorage.setItem('mydiet_remembered_email', normalizedEmail)
@@ -746,14 +775,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('mydiet_remembered_email')
     }
 
+    // CRITICAL FIX: Store the raw database ID for future API calls (like creating posts)
+    localStorage.setItem('mydiet_user_db_id', data.id)
+
     setUserState(prev => {
-      const updated = {
-        ...prev,
-        name: data.username || prev.name
-      }
-      saveState('mydiet_user', updated)
-      return updated
-    })
+    // Format the database ID to a 6-digit string
+    const formattedId = `UID-${String(data.id).padStart(6, '0')}`;
+    const updated = {
+      ...prev,
+      name: data.username || prev.name,
+      uid: formattedId // Update the profile UID to the formatted one
+    }
+    saveState('mydiet_user', updated)
+    return updated
+  })
 
     setIsLoggedIn(true)
 
@@ -763,41 +798,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
   }, [])
 
-  // Sign up — create account if email does not already exist
+// Sign up — create account if email does not already exist
   const signUp = useCallback(async (name: string, email: string, password: string): Promise<AuthResult> => {
-  try {
-    const response = await fetch('http://localhost:8080/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: name,
-        email: email.trim().toLowerCase(),
-        password
+    try {
+      const response = await fetch('http://localhost:8080/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: name,
+          email: email.trim().toLowerCase(),
+          password
+        })
       })
-    })
 
-    const data = await response.json()
+      const data = await response.json()
 
-    if (!response.ok) {
-      return { success: false, message: data.message || 'Signup failed' }
+      if (!response.ok) {
+        return { success: false, message: data.message || 'Signup failed' }
+      }
+
+      localStorage.setItem('user', JSON.stringify(data))
+      localStorage.setItem('mydiet_logged_in', 'true')
+      
+      localStorage.setItem('mydiet_user_db_id', data.id)
+
+      const formattedId = `UID-${String(data.id).padStart(6, '0')}`;
+
+      setUserState(prev => {
+        const updated = {
+          ...prev,
+          name: data.username || prev.name,
+          uid: formattedId 
+        }
+        // Save the updated profile state to local storage so it persists on refresh
+        saveState('mydiet_user', updated) 
+        return updated
+      })
+
+      setIsLoggedIn(true)
+
+      return { success: true }
+
+    } catch (error) {
+      return { success: false, message: 'Server error' }
     }
-
-    localStorage.setItem('user', JSON.stringify(data))
-    localStorage.setItem('mydiet_logged_in', 'true')
-
-    setUserState(prev => ({
-      ...prev,
-      name: data.username
-    }))
-
-    setIsLoggedIn(true)
-
-    return { success: true }
-
-  } catch (error) {
-    return { success: false, message: 'Server error' }
-  }
-}, [])
+  }, [])
 
   // Sign out — clear session but keep data in localStorage for sign-back-in
   const signOut = useCallback(() => {
