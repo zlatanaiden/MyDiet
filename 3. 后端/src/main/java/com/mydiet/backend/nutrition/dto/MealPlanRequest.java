@@ -7,7 +7,8 @@ public class MealPlanRequest {
     private String gender;          // "Male" or "Female"
     private double weightKg;
     private double heightCm;
-    private String activityLevel;   // "sedentaryOrLight" | "activeOrModerately" | "vigorousOrVigorouslyActiveLifestyle"
+    private String activityLevel;   // "sedentary" | "light" | "moderate" | "active" | "veryActive"
+    private String goal;             // "lose" | "gain" | "maintain" (default: maintain)
     private List<String> allergies; // e.g. ["peanut", "shrimp"]
 
     public int getAge() { return age; }
@@ -24,6 +25,9 @@ public class MealPlanRequest {
 
     public String getActivityLevel() { return activityLevel; }
     public void setActivityLevel(String activityLevel) { this.activityLevel = activityLevel; }
+
+    public String getGoal() { return goal; }
+    public void setGoal(String goal) { this.goal = goal; }
 
     public List<String> getAllergies() { return allergies; }
     public void setAllergies(List<String> allergies) { this.allergies = allergies; }

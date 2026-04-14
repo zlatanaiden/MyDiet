@@ -8,10 +8,12 @@ export interface Meal {
   fats: number
   image: string
   checked: boolean
-  /**
-   * 该餐品包含的常见过敏源列表。
-   * 用于过滤掉有对应过敏源的用户。
-   */
+  category?: string
+  totalTime?: string
+  keywords?: string[]
+  ingredients?: string[]
+  quantities?: string[]
+  instructions?: string[]
   allergens?: string[]
 }
 
@@ -29,9 +31,12 @@ export interface Alternative {
   carbs: number
   fats: number
   image: string
-  /**
-   * A list of common allergens contained in the meal.
-   */
+  category?: string
+  totalTime?: string
+  keywords?: string[]
+  ingredients?: string[]
+  quantities?: string[]
+  instructions?: string[]
   allergens?: string[]
 }
 

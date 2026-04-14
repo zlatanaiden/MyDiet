@@ -9,11 +9,17 @@ public class RecipeDTO {
     private double fats;
     private String image;
     private String category;
+    private String totalTime;
+    private String keywords;
+    private String ingredients;
+    private String quantities;
+    private String instructions;
 
     public RecipeDTO() {}
 
     public RecipeDTO(Integer id, String name, Double calories, Double protein,
-                     Double carbs, Double fats, String image, String category) {
+                     Double carbs, Double fats, String image, String category,
+                     String totalTime, String keywords, String ingredients, String quantities, String instructions) {
         this.id = id == null ? "" : String.valueOf(id);
         this.name = name;
         this.calories = calories != null ? calories : 0;
@@ -22,6 +28,11 @@ public class RecipeDTO {
         this.fats = fats != null ? fats : 0;
         this.image = image;
         this.category = category;
+        this.totalTime = totalTime;
+        this.keywords = keywords;
+        this.ingredients = ingredients;
+        this.quantities = quantities;
+        this.instructions = instructions;
     }
 
     public String getId() { return id; }
@@ -47,4 +58,19 @@ public class RecipeDTO {
 
     public String getCategory() { return category; }
     public void setCategory(String category) { this.category = category; }
+
+    public String getTotalTime() { return totalTime; }
+    public void setTotalTime(String totalTime) { this.totalTime = totalTime; }
+
+    public String getKeywords() { return keywords; }
+    public void setKeywords(String keywords) { this.keywords = keywords; }
+
+    public String getIngredients() { return ingredients; }
+    public void setIngredients(String ingredients) { this.ingredients = ingredients; }
+
+    public String getQuantities() { return quantities; }
+    public void setQuantities(String quantities) { this.quantities = quantities; }
+
+    public String getInstructions() { return instructions; }
+    public void setInstructions(String instructions) { this.instructions = instructions; }
 }

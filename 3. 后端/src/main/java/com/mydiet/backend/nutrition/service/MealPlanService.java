@@ -3,9 +3,7 @@ package com.mydiet.backend.nutrition.service;
 import com.mydiet.backend.nutrition.dto.*;
 import com.mydiet.backend.nutrition.dto.MealPlanResponse.*;
 import com.mydiet.backend.nutrition.entity.Recipe;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.Query;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -14,8 +12,8 @@ import java.util.stream.Collectors;
 @Service
 public class MealPlanService {
 
-    @PersistenceContext
-    private EntityManager em;
+    @Autowired
+    private RecipeCache recipeCache;
 
     // ── 热量分配比例 3:4:3 ──
     private static final double BREAKFAST_RATIO = 0.3;
@@ -31,22 +29,13 @@ public class MealPlanService {
     // ── 备选数（和前端 alternatives 数量一致）──
     private static final int ALT_COUNT = 3;
 
-    // ── PAL 活动系数 ──
+    // ── PAL 活动系数（5档）──
     private static final Map<String, Double> PAL = Map.of(
-        "sedentaryOrLight",                        1.55,
-        "activeOrModerately",                      1.80,
-        "vigorousOrVigorouslyActiveLifestyle",      2.20
-    );
-
-    // ── 早餐适用的 category ──
-    private static final Set<String> BREAKFAST_CATS = Set.of(
-        "Breakfast", "Smoothies", "Quick Breads", "Breads"
-    );
-
-    // ── 午/晚不适合做正餐的 category ──
-    private static final Set<String> EXCLUDE_CATS = Set.of(
-        "Dessert", "Candy", "Beverages", "Bar Cookie", "Drop Cookies",
-        "Spreads", "Salad Dressings", "Sauces"
+        "sedentary",    1.2,
+        "light",        1.375,
+        "moderate",     1.55,
+        "active",       1.725,
+        "veryActive",   1.9
     );
 
     // ── AMDR 宏量营养素比例（取中值）──
@@ -62,9 +51,24 @@ public class MealPlanService {
         double bmr  = calcBmr(req);
         double tdee = calcTdee(bmr, req.getActivityLevel());
 
-        double bfCal = tdee * BREAKFAST_RATIO;
-        double lnCal = tdee * LUNCH_RATIO;
-        double dnCal = tdee * DINNER_RATIO;
+        // ── 根据目标调整热量 ──
+        String goal = req.getGoal() != null ? req.getGoal() : "maintain";
+        double adjustedTdee;
+        switch (goal) {
+            case "lose":
+                adjustedTdee = tdee - 500;   // 减重：每日减 500 kcal
+                break;
+            case "gain":
+                adjustedTdee = tdee + 300;   // 增重：每日加 300 kcal
+                break;
+            default:
+                adjustedTdee = tdee;         // 维持
+                break;
+        }
+
+        double bfCal = adjustedTdee * BREAKFAST_RATIO;
+        double lnCal = adjustedTdee * LUNCH_RATIO;
+        double dnCal = adjustedTdee * DINNER_RATIO;
 
         Set<Integer> usedIds = new HashSet<>();
         List<DayPlanDTO> days = new ArrayList<>();
@@ -83,17 +87,17 @@ public class MealPlanService {
             days.add(buildDay(dayName, bf, ln, dn));
         }
 
-        // 每日宏量目标
+        // 每日宏量目标（基于调整后的热量）
         DailyTargetsDTO tgt = new DailyTargetsDTO();
-        tgt.setCalories(Math.round(tdee));
-        tgt.setProtein(Math.round(tdee * PROTEIN_RATIO / 4.0));
-        tgt.setCarbs(Math.round(tdee * CARB_RATIO / 4.0));
-        tgt.setFats(Math.round(tdee * FAT_RATIO / 9.0));
+        tgt.setCalories(Math.round(adjustedTdee));
+        tgt.setProtein(Math.round(adjustedTdee * PROTEIN_RATIO / 4.0));
+        tgt.setCarbs(Math.round(adjustedTdee * CARB_RATIO / 4.0));
+        tgt.setFats(Math.round(adjustedTdee * FAT_RATIO / 9.0));
         tgt.setFiber(req.getGender().equalsIgnoreCase("Male") ? 38 : 25);
 
         MealPlanResponse resp = new MealPlanResponse();
         resp.setBmr(Math.round(bmr));
-        resp.setTdee(Math.round(tdee));
+        resp.setTdee(Math.round(adjustedTdee));
         resp.setTargets(tgt);
         resp.setWeeklyPlan(days);
         return resp;
@@ -152,103 +156,13 @@ public class MealPlanService {
     }
 
     // ====================================================================
-    //  SQL 候选查询（动态拼接过敏原 + category + 排除 ID）
+    //  候选查询：委托 RecipeCache 在内存中完成过滤 + 随机采样
     // ====================================================================
-    @SuppressWarnings("unchecked")
     private List<Recipe> queryCandidates(double minCal, double maxCal,
                                          List<String> allergies,
                                          Set<Integer> usedIds,
                                          String mealType, int limit) {
-
-        StringBuilder sql = new StringBuilder(
-            "SELECT * FROM mydiet_nutrition.recipes WHERE calories BETWEEN :minCal AND :maxCal"
-        );
-
-        // ── category 过滤 ──
-        if ("breakfast".equalsIgnoreCase(mealType)) {
-            // 早餐：只选早餐类
-            sql.append(" AND category IN (");
-            int i = 0;
-            for (String cat : BREAKFAST_CATS) {
-                if (i > 0) sql.append(',');
-                sql.append(":bfCat").append(i);
-                i++;
-            }
-            sql.append(")");
-        } else {
-            // 午/晚餐：排除不适合的 category
-            sql.append(" AND category NOT IN (");
-            int i = 0;
-            for (String cat : EXCLUDE_CATS) {
-                if (i > 0) sql.append(',');
-                sql.append(":exCat").append(i);
-                i++;
-            }
-            sql.append(")");
-            // 午/晚也不要 Breakfast 类
-            sql.append(" AND category NOT IN (");
-            int j = 0;
-            for (String cat : BREAKFAST_CATS) {
-                if (j > 0) sql.append(',');
-                sql.append(":noBfCat").append(j);
-                j++;
-            }
-            sql.append(")");
-        }
-
-        // ── 排除已选 ID ──
-        if (usedIds != null && !usedIds.isEmpty()) {
-            sql.append(" AND id NOT IN (:usedIds)");
-        }
-
-        // ── 过敏原模糊排除（ingredients + keywords 双字段）──
-        if (allergies != null) {
-            for (int a = 0; a < allergies.size(); a++) {
-                sql.append(" AND LOWER(ingredients) NOT LIKE :allergyI").append(a);
-                sql.append(" AND LOWER(keywords) NOT LIKE :allergyK").append(a);
-            }
-        }
-
-        sql.append(" ORDER BY RAND() LIMIT :lim");
-
-        Query q = em.createNativeQuery(sql.toString(), Recipe.class);
-        q.setParameter("minCal", minCal);
-        q.setParameter("maxCal", maxCal);
-        q.setParameter("lim", limit);
-
-        // 绑定 category 参数
-        if ("breakfast".equalsIgnoreCase(mealType)) {
-            int i = 0;
-            for (String cat : BREAKFAST_CATS) {
-                q.setParameter("bfCat" + i, cat);
-                i++;
-            }
-        } else {
-            int i = 0;
-            for (String cat : EXCLUDE_CATS) {
-                q.setParameter("exCat" + i, cat);
-                i++;
-            }
-            int j = 0;
-            for (String cat : BREAKFAST_CATS) {
-                q.setParameter("noBfCat" + j, cat);
-                j++;
-            }
-        }
-
-        if (usedIds != null && !usedIds.isEmpty()) {
-            q.setParameter("usedIds", usedIds);
-        }
-
-        if (allergies != null) {
-            for (int a = 0; a < allergies.size(); a++) {
-                String pattern = "%" + allergies.get(a).trim().toLowerCase() + "%";
-                q.setParameter("allergyI" + a, pattern);
-                q.setParameter("allergyK" + a, pattern);
-            }
-        }
-
-        return q.getResultList();
+        return recipeCache.getCandidates(minCal, maxCal, allergies, usedIds, mealType, limit);
     }
 
     // ====================================================================
@@ -303,7 +217,8 @@ public class MealPlanService {
         if (r == null) return null;
         return new RecipeDTO(
             r.getId(), r.getName(), r.getCalories(), r.getProteinG(),
-            r.getCarbohydrateG(), r.getFatG(), r.getImageUrl(), r.getCategory()
+            r.getCarbohydrateG(), r.getFatG(), r.getImageUrl(), r.getCategory(),
+            r.getTotalTime(), r.getKeywords(), r.getIngredients(), r.getQuantities(), r.getInstructions()
         );
     }
 

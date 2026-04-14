@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
-import { defaultUser, todayMeals, weeklyPlan, communityPosts, trendingPosts, type UserProfile, type DayMeals, type DayPlan, type Post, type Comment } from '../data/mockData'
+import { defaultUser, todayMeals, type UserProfile, type DayMeals, type DayPlan, type Post, type Comment } from '../data/mockData'
+import { generateMealPlan, swapMealApi, type GenerateRequest, type GenerateResponse, type RecipeDTO } from '../api/mealPlanApi'
 
 interface NutritionData {
   calories: { current: number; target: number }
@@ -40,13 +41,14 @@ function getDayName(year: number, month: number, day: number): string {
   return days[date.getDay()]
 }
 
-// Empty nutrition (0 consumed) for fresh dates
+// Empty nutrition (0 consumed) for fresh dates — use backend targets if available
 function makeEmptyNutrition(): NutritionData {
+  const saved = loadState<{ calories?: number; protein?: number; carbs?: number; fats?: number } | null>('mydiet_nutrition_targets', null)
   return {
-    calories: { current: 0, target: 2200 },
-    protein: { current: 0, target: 130, color: '#4ADE80' },
-    carbs: { current: 0, target: 280, color: '#22D3EE' },
-    fats: { current: 0, target: 73, color: '#F97316' },
+    calories: { current: 0, target: saved?.calories ?? 2200 },
+    protein: { current: 0, target: saved?.protein ?? 130, color: '#4ADE80' },
+    carbs: { current: 0, target: saved?.carbs ?? 280, color: '#22D3EE' },
+    fats: { current: 0, target: saved?.fats ?? 73, color: '#F97316' },
   }
 }
 
@@ -86,6 +88,8 @@ interface AppContextType {
   incrementStreak: () => void
   completePlan: () => void
   resetPlan: () => void
+  generatePlan: (req: GenerateRequest) => Promise<void>
+  planLoading: boolean
   setUnit: (u: 'metric' | 'imperial') => void
   setSelectedDate: (d: number) => void
   setFullDate: (year: number, month: number, day: number) => void
@@ -151,8 +155,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [streak, setStreak] = useState(() => loadState('mydiet_streak', 0))
   const [streakCheckedToday, setStreakCheckedToday] = useState(() => loadState('mydiet_streak_today', false))
   const [isLoggedIn, setIsLoggedIn] = useState(() => {return !!localStorage.getItem('user') || !!sessionStorage.getItem('user')})
-  const [plan, setPlan] = useState<DayPlan[]>(() => loadState('mydiet_plan', weeklyPlan))
+  const [plan, setPlan] = useState<DayPlan[]>(() => loadState('mydiet_plan', []))
   const [planCompleted, setPlanCompleted] = useState(() => loadState('mydiet_plan_done', false))
+  const [planLoading, setPlanLoading] = useState(false)
+  const [tdee, setTdee] = useState(() => loadState('mydiet_tdee', 2200))
   const [unit, setUnitState] = useState<'metric' | 'imperial'>(() => loadState('mydiet_unit', 'metric'))
   const [selectedDate, setSelectedDateState] = useState(new Date().getDate())
   const [selectedMonth, setSelectedMonthState] = useState(new Date().getMonth())
@@ -250,6 +256,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setUser = useCallback((u: UserProfile) => {
     setUserState(u)
     saveState('mydiet_user', u)
+
+    // Sync profile to backend if logged in
+    const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
+    if (stored) {
+      try {
+        const { id } = JSON.parse(stored)
+        if (id) {
+          fetch(`http://localhost:8080/api/users/${id}/profile`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              age: u.age,
+              gender: u.gender,
+              heightCm: u.height,
+              weightKg: u.weight,
+              targetWeight: u.targetWeight,
+              goal: u.goal,
+              activityLevel: u.activityLevel,
+              allergies: u.allergies,
+              restrictions: u.restrictions,
+            }),
+          }).catch(() => {})  // silent fail — localStorage is the fallback
+        }
+      } catch {}
+    }
   }, [])
 
   const updateWeight = useCallback((w: number) => {
@@ -302,6 +333,80 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveState('mydiet_plan_done', false)
   }, [])
 
+  // Helper: parse JSON string to string array safely
+  const parseJsonArray = (s: string | null | undefined): string[] => {
+    if (!s) return []
+    try { const arr = JSON.parse(s); return Array.isArray(arr) ? arr : [] }
+    catch { return [] }
+  }
+
+  // Helper: convert backend RecipeDTO → frontend Meal shape
+  const recipeToMeal = (r: RecipeDTO, checked = false) => ({
+    id: r.id,
+    name: r.name,
+    calories: Math.round(r.calories),
+    protein: Math.round(r.protein),
+    carbs: Math.round(r.carbs),
+    fats: Math.round(r.fats),
+    image: r.image || '',
+    checked,
+    category: r.category || '',
+    totalTime: r.totalTime || '',
+    keywords: parseJsonArray(r.keywords),
+    ingredients: parseJsonArray(r.ingredients),
+    quantities: parseJsonArray(r.quantities),
+    instructions: parseJsonArray(r.instructions),
+  })
+
+  // Generate 7-day plan from backend
+  const generatePlan = useCallback(async (req: GenerateRequest) => {
+    setPlanLoading(true)
+    try {
+      const resp: GenerateResponse = await generateMealPlan(req)
+
+      // Convert to frontend DayPlan[]
+      const newPlan: DayPlan[] = resp.weeklyPlan.map(d => ({
+        day: d.day,
+        meals: {
+          breakfast: recipeToMeal(d.meals.breakfast),
+          lunch: recipeToMeal(d.meals.lunch),
+          dinner: recipeToMeal(d.meals.dinner),
+        },
+        alternatives: {
+          breakfast: (d.alternatives.breakfast || []).map(r => recipeToMeal(r)),
+          lunch: (d.alternatives.lunch || []).map(r => recipeToMeal(r)),
+          dinner: (d.alternatives.dinner || []).map(r => recipeToMeal(r)),
+        },
+      }))
+
+      setPlan(newPlan)
+      saveState('mydiet_plan', newPlan)
+
+      // Save TDEE for swap requests
+      setTdee(resp.tdee)
+      saveState('mydiet_tdee', resp.tdee)
+
+      // Update nutrition targets from backend
+      const tgt = resp.targets
+      setDailyRecords(prev => {
+        // Don't wipe existing records, but update the default target values via a flag
+        saveState('mydiet_nutrition_targets', tgt)
+        return prev
+      })
+
+      // Store targets separately so makeEmptyNutrition can use them
+      saveState('mydiet_nutrition_targets', resp.targets)
+
+      setPlanCompleted(true)
+      saveState('mydiet_plan_done', true)
+    } catch (err) {
+      console.error('Failed to generate meal plan:', err)
+      throw err
+    } finally {
+      setPlanLoading(false)
+    }
+  }, [])
+
   const setUnit = useCallback((u: 'metric' | 'imperial') => {
     setUnitState(u)
     saveState('mydiet_unit', u)
@@ -339,25 +444,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }))
   }, [selectedYear, selectedMonth, selectedDate, updateDailyRecord])
 
-  const swapMeal = useCallback((day: string, mealType: 'breakfast' | 'lunch' | 'dinner') => {
-    setPlan(prev => {
-      const updated = prev.map(d => {
-        if (d.day.toLowerCase() !== day.toLowerCase()) return d
-        const alts = d.alternatives[mealType]
-        const currentMeal = d.meals[mealType]
-        // Exclude current meal so we always pick a different one
-        const otherAlts = alts.filter(a => a.id !== currentMeal.id)
-        if (otherAlts.length === 0) return d
-        const randomAlt = otherAlts[Math.floor(Math.random() * otherAlts.length)]
-        return {
-          ...d,
-          meals: { ...d.meals, [mealType]: { ...randomAlt, checked: false } },
-        }
+  const swapMeal = useCallback(async (day: string, mealType: 'breakfast' | 'lunch' | 'dinner') => {
+    // Collect all recipe IDs currently in the plan to exclude
+    const allIds: number[] = []
+    plan.forEach(d => {
+      ;(['breakfast', 'lunch', 'dinner'] as const).forEach(mt => {
+        const m = d.meals[mt]
+        if (m?.id) allIds.push(Number(m.id))
+        ;(d.alternatives[mt] || []).forEach(a => { if (a?.id) allIds.push(Number(a.id)) })
       })
-      saveState('mydiet_plan', updated)
-      return updated
     })
-  }, [])
+
+    const ratioMap = { breakfast: 0.3, lunch: 0.4, dinner: 0.3 }
+    const targetCal = tdee * ratioMap[mealType]
+    const userAllergies: string[] = loadState('mydiet_user', { allergies: [] }).allergies || []
+
+    try {
+      const resp = await swapMealApi({
+        targetCalories: targetCal,
+        tdee,
+        mealType,
+        allergies: userAllergies,
+        excludeIds: allIds,
+      })
+
+      setPlan(prev => {
+        const updated = prev.map(d => {
+          if (d.day.toLowerCase() !== day.toLowerCase()) return d
+          const newMain = recipeToMeal(resp.main)
+          const newAlts = (resp.alternatives || []).map(r => recipeToMeal(r))
+          return {
+            ...d,
+            meals: { ...d.meals, [mealType]: newMain },
+            alternatives: { ...d.alternatives, [mealType]: newAlts },
+          }
+        })
+        saveState('mydiet_plan', updated)
+        return updated
+      })
+    } catch (err) {
+      console.error('Swap failed, falling back to local swap:', err)
+      // Fallback: swap locally from alternatives
+      setPlan(prev => {
+        const updated = prev.map(d => {
+          if (d.day.toLowerCase() !== day.toLowerCase()) return d
+          const alts = d.alternatives[mealType]
+          const currentMeal = d.meals[mealType]
+          const otherAlts = alts.filter(a => a.id !== currentMeal.id)
+          if (otherAlts.length === 0) return d
+          const randomAlt = otherAlts[Math.floor(Math.random() * otherAlts.length)]
+          return { ...d, meals: { ...d.meals, [mealType]: { ...randomAlt, checked: false } } }
+        })
+        saveState('mydiet_plan', updated)
+        return updated
+      })
+    }
+  }, [plan, tdee])
 
   // Bug 1: Select a specific alternative to replace current meal
   const selectMealAlternative = useCallback((day: string, mealType: 'breakfast' | 'lunch' | 'dinner', altId: string) => {
@@ -747,10 +889,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     setUserState(prev => {
-      const updated = {
+      const updated: UserProfile = {
         ...prev,
-        name: data.username || prev.name
+        name: data.username || prev.name,
+        uid: data.id ? String(data.id) : prev.uid,
+        age: data.age ?? prev.age,
+        gender: data.gender ?? prev.gender,
+        height: data.heightCm ?? prev.height,
+        weight: data.weightKg ?? prev.weight,
+        targetWeight: data.targetWeight ?? prev.targetWeight,
+        goal: data.goal ?? prev.goal,
+        activityLevel: data.activityLevel ?? prev.activityLevel,
+        allergies: data.allergies ?? prev.allergies,
+        restrictions: data.restrictions ?? prev.restrictions,
       }
+      updated.bmi = +(updated.weight / ((updated.height / 100) ** 2)).toFixed(1)
       saveState('mydiet_user', updated)
       return updated
     })
@@ -785,10 +938,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('user', JSON.stringify(data))
     localStorage.setItem('mydiet_logged_in', 'true')
 
-    setUserState(prev => ({
-      ...prev,
-      name: data.username
-    }))
+    setUserState(prev => {
+      const updated: UserProfile = {
+        ...prev,
+        name: data.username,
+        uid: data.id ? String(data.id) : prev.uid,
+      }
+      saveState('mydiet_user', updated)
+      return updated
+    })
 
     setIsLoggedIn(true)
 
@@ -811,11 +969,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       user, nutrition: currentRecord.nutrition, streak, streakCheckedToday,
       meals: currentRecord.meals, weeklyPlan: plan,
-      planCompleted, unit, selectedDate, selectedMonth, selectedYear, isToday, isLoggedIn,
+      planCompleted, planLoading, unit, selectedDate, selectedMonth, selectedYear, isToday, isLoggedIn,
       posts, trendingPostsList,
       extraMeals: currentRecord.extraMeals || [],
       setUser, updateWeight, toggleMealCheck, incrementStreak,
-      completePlan, resetPlan, setUnit, setSelectedDate, setFullDate, resetToToday,
+      completePlan, resetPlan, generatePlan, setUnit, setSelectedDate, setFullDate, resetToToday,
       addNutrition, swapMeal, selectMealAlternative, addExtraMeals, removeExtraMeal, removeAllExtraMeals,
       addPost,
       toggleFollow,

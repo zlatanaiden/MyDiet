@@ -2,12 +2,16 @@ package com.mydiet.backend.controller;
 
 import com.mydiet.backend.entity.User;
 import com.mydiet.backend.repository.UserRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -21,6 +25,8 @@ public class AuthController {
 
     @Autowired
     private UserRepository userRepository;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * Register a new local user
@@ -114,6 +120,25 @@ public class AuthController {
         response.put("provider", user.getProvider());
         response.put("avatarUrl", user.getAvatarUrl());
         response.put("avatarGradient", user.getAvatarGradient());
+        // Profile fields
+        response.put("age", user.getAge());
+        response.put("gender", user.getGender());
+        response.put("heightCm", user.getHeightCm());
+        response.put("weightKg", user.getWeightKg());
+        response.put("targetWeight", user.getTargetWeight());
+        response.put("goal", user.getGoal());
+        response.put("activityLevel", user.getActivityLevel());
+        response.put("allergies", parseJsonList(user.getAllergies()));
+        response.put("restrictions", parseJsonList(user.getRestrictions()));
         return response;
+    }
+
+    private List<String> parseJsonList(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
+        } catch (JsonProcessingException e) {
+            return List.of();
+        }
     }
 }

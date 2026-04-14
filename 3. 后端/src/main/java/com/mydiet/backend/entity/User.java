@@ -35,6 +35,34 @@ public class User {
     @Column(name = "avatar_gradient")
     private String avatarGradient;
 
+    // ---- Profile fields ----
+    @Column
+    private Integer age;
+
+    @Column
+    private String gender;
+
+    @Column(name = "height_cm")
+    private Double heightCm;
+
+    @Column(name = "weight_kg")
+    private Double weightKg;
+
+    @Column(name = "target_weight")
+    private Double targetWeight;
+
+    @Column
+    private String goal;
+
+    @Column(name = "activity_level")
+    private String activityLevel;
+
+    @Column(columnDefinition = "JSON")
+    private String allergies;
+
+    @Column(columnDefinition = "JSON")
+    private String restrictions;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 }

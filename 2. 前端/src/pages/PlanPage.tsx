@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronRight, Pencil, RotateCcw, X, Check, Activity } from 'lucide-react'
+import { ChevronRight, Pencil, RotateCcw, X, Check, Activity, RefreshCw } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 // ==================== Week Date Helpers ====================
@@ -23,19 +23,18 @@ function formatShortDate(d: Date): string {
 
 // ==================== Questionnaire (2-1) ====================
 function PlanQuestionnaire() {
-  const { setUser, user, completePlan } = useApp()
+  const { setUser, user, generatePlan, planLoading } = useApp()
   const navigate = useNavigate()
 
   const [form, setForm] = useState({
-    goal: 'lose' as string,
-    targetWeight: 0,
-    age: 0,
-    gender: '',
-    height: 0,
-    weight: 0,
-    activity: '',
-    allergies: '',
-    restrictions: '',
+    goal: (user.goal || 'lose') as string,
+    targetWeight: user.targetWeight || 0,
+    age: user.age || 0,
+    gender: user.gender || '',
+    height: user.height || 0,
+    weight: user.weight || 0,
+    activity: user.activityLevel || '',
+    allergies: (user.allergies || []).join(', '),
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -54,25 +53,55 @@ function PlanQuestionnaire() {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [submitError, setSubmitError] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
+    setSubmitError('')
+
     const bmi = +(form.weight / ((form.height / 100) ** 2)).toFixed(1)
-    setUser({
-      ...user,
-      goal: form.goal as 'lose' | 'gain' | 'maintain',
-      targetWeight: form.targetWeight,
-      age: form.age,
-      gender: form.gender,
-      height: form.height,
-      weight: form.weight,
-      activityLevel: form.activity,
-      allergies: form.allergies.split(',').map(s => s.trim()).filter(Boolean),
-      restrictions: form.restrictions.split(',').map(s => s.trim()).filter(Boolean),
-      bmi,
-    })
-    completePlan()
-    navigate('/plan')
+    const allergies = form.allergies.split(',').map(s => s.trim()).filter(Boolean)
+
+    // Map frontend activity labels to backend activityLevel keys
+    const activityMap: Record<string, string> = {
+      'Sedentary': 'sedentary',
+      'Light': 'light',
+      'Moderate': 'moderate',
+      'Active': 'active',
+      'Very Active': 'veryActive',
+    }
+
+    try {
+      await generatePlan({
+        age: form.age,
+        gender: form.gender === 'Other' ? 'Male' : form.gender,
+        weightKg: form.weight,
+        heightCm: form.height,
+        activityLevel: activityMap[form.activity] || 'moderate',
+        goal: form.goal,
+        allergies,
+      })
+
+      setUser({
+        ...user,
+        goal: form.goal as 'lose' | 'gain' | 'maintain',
+        targetWeight: form.targetWeight,
+        age: form.age,
+        gender: form.gender,
+        height: form.height,
+        weight: form.weight,
+        activityLevel: form.activity,
+        allergies: form.allergies.split(',').map(s => s.trim()).filter(Boolean),
+        restrictions: [],
+        bmi,
+      })
+
+      navigate('/plan')
+    } catch (err) {
+      setSubmitError('Failed to generate plan. Is the backend running?')
+      console.error(err)
+    }
   }
 
   const ringClass = (field: string) =>
@@ -166,17 +195,11 @@ function PlanQuestionnaire() {
             placeholder="e.g. Peanuts, Shellfish"
             className="w-full rounded-xl bg-white/5 px-4 py-3 text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-[#4ADE80]/50" />
         </div>
-        <div>
-          <label className="mb-2 block text-[13px] font-semibold uppercase tracking-wider text-white/60">Dietary Restrictions</label>
-          <input value={form.restrictions} onChange={e => setForm(f => ({ ...f, restrictions: e.target.value }))}
-            placeholder="e.g. Vegetarian, Low Sodium"
-            className="w-full rounded-xl bg-white/5 px-4 py-3 text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-[#4ADE80]/50" />
-        </div>
-
-        <button type="submit"
-          className="w-full rounded-xl bg-gradient-to-r from-[#4ADE80] to-[#22D3EE] py-4 text-[16px] font-bold text-white transition-transform hover:scale-[1.02]">
-          Generate My Plan
+        <button type="submit" disabled={planLoading}
+          className="w-full rounded-xl bg-gradient-to-r from-[#4ADE80] to-[#22D3EE] py-4 text-[16px] font-bold text-white transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed">
+          {planLoading ? 'Generating...' : 'Generate My Plan'}
         </button>
+        {submitError && <p className="mt-2 text-center text-[13px] text-[#F87171]">{submitError}</p>}
       </form>
     </div>
   )
@@ -206,9 +229,11 @@ function EditModal({ title, onClose, children }: { title: string; onClose: () =>
 
 // ==================== Dashboard (2-2) ====================
 function PlanDashboard() {
-  const { user, setUser, updateWeight, weeklyPlan, resetPlan } = useApp()
+  const { user, setUser, updateWeight, weeklyPlan, resetPlan, generatePlan, planLoading } = useApp()
   const navigate = useNavigate()
   const weekDates = getWeekDates()
+
+  const [regenError, setRegenError] = useState('')
 
   // Bug 4: Edit modal states
   const [editStats, setEditStats] = useState(false)
@@ -220,7 +245,6 @@ function PlanDashboard() {
   const [goalForm, setGoalForm] = useState({ goal: user.goal as string, targetWeight: user.targetWeight })
   const [restrictionsForm, setRestrictionsForm] = useState({
     allergies: user.allergies.join(', '),
-    restrictions: user.restrictions.join(', '),
   })
 
   const saveStats = () => {
@@ -238,7 +262,7 @@ function PlanDashboard() {
     setUser({
       ...user,
       allergies: restrictionsForm.allergies.split(',').map(s => s.trim()).filter(Boolean),
-      restrictions: restrictionsForm.restrictions.split(',').map(s => s.trim()).filter(Boolean),
+      restrictions: [],
     })
     setEditRestrictions(false)
   }
@@ -289,12 +313,12 @@ function PlanDashboard() {
           </div>
         </div>
 
-        {/* Restrictions */}
+        {/* Allergies */}
         <div className="glass space-y-3 rounded-2xl p-5">
           <div className="flex items-center justify-between">
-            <h3 className="text-[15px] font-bold text-white">Restrictions</h3>
+            <h3 className="text-[15px] font-bold text-white">Allergies</h3>
             <button onClick={() => {
-              setRestrictionsForm({ allergies: user.allergies.join(', '), restrictions: user.restrictions.join(', ') })
+              setRestrictionsForm({ allergies: user.allergies.join(', ') })
               setEditRestrictions(true)
             }}
               className="flex items-center gap-1 rounded-lg bg-[#4ADE80]/10 px-2 py-1 text-[11px] font-medium text-[#4ADE80] transition-all duration-200 hover:scale-110 hover:bg-[#4ADE80]/20 hover:shadow-[0_0_12px_rgba(74,222,128,0.3)]">
@@ -302,11 +326,11 @@ function PlanDashboard() {
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {[...user.allergies, ...user.restrictions].length > 0
-              ? [...user.allergies, ...user.restrictions].map(tag => (
+            {user.allergies.length > 0
+              ? user.allergies.map(tag => (
                 <span key={tag} className="rounded-full bg-white/5 px-3 py-1 text-[12px] text-white/60">{tag}</span>
               ))
-              : <span className="text-[12px] text-white/30">No restrictions set</span>
+              : <span className="text-[12px] text-white/30">No allergies set</span>
             }
           </div>
         </div>
@@ -348,10 +372,35 @@ function PlanDashboard() {
           </div>
         </div>
 
-        {/* Refactor */}
+        {/* Regenerate & Edit Settings */}
+        <button
+          disabled={planLoading}
+          onClick={async () => {
+            setRegenError('')
+            const activityMap: Record<string, string> = {
+              'Sedentary': 'sedentary', 'Light': 'light', 'Moderate': 'moderate',
+              'Active': 'active', 'Very Active': 'veryActive',
+            }
+            try {
+              await generatePlan({
+                age: user.age,
+                gender: user.gender === 'Other' ? 'Male' : user.gender,
+                weightKg: user.weight,
+                heightCm: user.height,
+                activityLevel: activityMap[user.activityLevel] || 'moderate',
+                goal: user.goal || 'maintain',
+                allergies: [...(user.allergies || [])],
+              })
+            } catch { setRegenError('Failed to regenerate. Is backend running?') }
+          }}
+          className="glass group flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[13px] font-semibold text-[#4ADE80] transition-all duration-200 hover:scale-[1.03] hover:bg-white/10 hover:shadow-[0_0_16px_rgba(74,222,128,0.2)] disabled:opacity-50 disabled:cursor-not-allowed">
+          <RefreshCw className={`h-4 w-4 transition-transform duration-300 ${planLoading ? 'animate-spin' : 'group-hover:-rotate-180'}`} />
+          {planLoading ? 'Generating...' : 'Regenerate Plan'}
+        </button>
+        {regenError && <p className="text-center text-[12px] text-[#F87171]">{regenError}</p>}
         <button onClick={() => resetPlan()}
           className="glass group flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[13px] font-semibold text-[#F97316] transition-all duration-200 hover:scale-[1.03] hover:bg-white/10 hover:shadow-[0_0_16px_rgba(249,115,22,0.2)]">
-          <RotateCcw className="h-4 w-4 transition-transform duration-300 group-hover:-rotate-180" /> Refactor Plan
+          <RotateCcw className="h-4 w-4 transition-transform duration-300 group-hover:-rotate-180" /> Edit Settings & Regenerate
         </button>
       </div>
 
@@ -465,18 +514,12 @@ function PlanDashboard() {
 
         {/* Edit Restrictions Modal */}
         {editRestrictions && (
-          <EditModal title="Update Restrictions" onClose={() => setEditRestrictions(false)}>
+          <EditModal title="Update Allergies" onClose={() => setEditRestrictions(false)}>
             <div className="space-y-4">
               <div>
                 <label className="mb-2 block text-[12px] font-semibold uppercase tracking-wider text-white/50">Allergies (comma separated)</label>
                 <input value={restrictionsForm.allergies} onChange={e => setRestrictionsForm(f => ({ ...f, allergies: e.target.value }))}
                   placeholder="e.g. Peanuts, Shellfish"
-                  className="w-full rounded-xl bg-white/5 px-4 py-3 text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-[#4ADE80]/50" />
-              </div>
-              <div>
-                <label className="mb-2 block text-[12px] font-semibold uppercase tracking-wider text-white/50">Dietary Restrictions (comma separated)</label>
-                <input value={restrictionsForm.restrictions} onChange={e => setRestrictionsForm(f => ({ ...f, restrictions: e.target.value }))}
-                  placeholder="e.g. Vegetarian, Low Sodium"
                   className="w-full rounded-xl bg-white/5 px-4 py-3 text-white placeholder-white/30 outline-none ring-1 ring-white/10 transition focus:ring-[#4ADE80]/50" />
               </div>
               <div className="flex gap-3 pt-2">
