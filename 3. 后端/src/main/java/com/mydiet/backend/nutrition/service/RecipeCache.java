@@ -70,7 +70,7 @@ public class RecipeCache {
         metas = new ArrayList<>(all.size());
 
         for (Recipe r : all) {
-            em.detach(r);
+            //em.detach(r);
             byId.put(r.getId(), r);
             metas.add(new Meta(
                 r.getId(),

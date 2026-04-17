@@ -1,22 +1,30 @@
 package com.mydiet.backend.nutrition.entity;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "recipes", catalog = "mydiet_nutrition")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class Recipe {
 
     @Id
     private Integer id;
 
+    @Column(columnDefinition = "TEXT")
     private String name;
 
-    @Column(name = "total_time")
+    @Column(name = "total_time", columnDefinition = "TEXT")
     private String totalTime;
 
-    @Column(name = "image_url", length = 600)
+    @Column(name = "image_url", columnDefinition = "TEXT")
     private String imageUrl;
 
+    @Column(columnDefinition = "TEXT")
     private String category;
 
     @Column(columnDefinition = "JSON")
@@ -31,57 +39,34 @@ public class Recipe {
     @Column(columnDefinition = "JSON")
     private String instructions;
 
-    private Double calories;
+    private Float calories;
 
     @Column(name = "fat_g")
-    private Double fatG;
+    private Float fatG;
 
     @Column(name = "saturated_fat_g")
-    private Double saturatedFatG;
+    private Float saturatedFatG;
 
     @Column(name = "cholesterol_mg")
-    private Double cholesterolMg;
+    private Float cholesterolMg;
 
     @Column(name = "sodium_mg")
-    private Double sodiumMg;
+    private Float sodiumMg;
 
     @Column(name = "carbohydrate_g")
-    private Double carbohydrateG;
+    private Float carbohydrateG;
 
     @Column(name = "fiber_g")
-    private Double fiberG;
+    private Float fiberG;
 
     @Column(name = "sugar_g")
-    private Double sugarG;
+    private Float sugarG;
 
     @Column(name = "protein_g")
-    private Double proteinG;
+    private Float proteinG;
 
     private Integer servings;
 
-    @Column(name = "recipe_yield", length = 100)
+    @Column(name = "recipe_yield", columnDefinition = "TEXT")
     private String recipeYield;
-
-    // ── Getters ──────────────────────────────────────────────
-
-    public Integer getId() { return id; }
-    public String getName() { return name; }
-    public String getTotalTime() { return totalTime; }
-    public String getImageUrl() { return imageUrl; }
-    public String getCategory() { return category; }
-    public String getKeywords() { return keywords; }
-    public String getIngredients() { return ingredients; }
-    public String getQuantities() { return quantities; }
-    public String getInstructions() { return instructions; }
-    public Double getCalories() { return calories; }
-    public Double getFatG() { return fatG; }
-    public Double getSaturatedFatG() { return saturatedFatG; }
-    public Double getCholesterolMg() { return cholesterolMg; }
-    public Double getSodiumMg() { return sodiumMg; }
-    public Double getCarbohydrateG() { return carbohydrateG; }
-    public Double getFiberG() { return fiberG; }
-    public Double getSugarG() { return sugarG; }
-    public Double getProteinG() { return proteinG; }
-    public Integer getServings() { return servings; }
-    public String getRecipeYield() { return recipeYield; }
 }

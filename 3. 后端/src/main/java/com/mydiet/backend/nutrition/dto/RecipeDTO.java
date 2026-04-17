@@ -17,15 +17,15 @@ public class RecipeDTO {
 
     public RecipeDTO() {}
 
-    public RecipeDTO(Integer id, String name, Double calories, Double protein,
-                     Double carbs, Double fats, String image, String category,
+    public RecipeDTO(Integer id, String name, Float calories, Float protein,
+                     Float carbs, Float fats, String image, String category,
                      String totalTime, String keywords, String ingredients, String quantities, String instructions) {
         this.id = id == null ? "" : String.valueOf(id);
         this.name = name;
-        this.calories = calories != null ? calories : 0;
-        this.protein = protein != null ? protein : 0;
-        this.carbs = carbs != null ? carbs : 0;
-        this.fats = fats != null ? fats : 0;
+        this.calories = calories != null ? calories : 0f;
+        this.protein = protein != null ? protein : 0f;
+        this.carbs = carbs != null ? carbs : 0f;
+        this.fats = fats != null ? fats : 0f;
         this.image = image;
         this.category = category;
         this.totalTime = totalTime;
@@ -38,9 +38,6 @@ public class RecipeDTO {
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-
     public double getCalories() { return calories; }
     public void setCalories(double calories) { this.calories = calories; }
 
@@ -52,6 +49,9 @@ public class RecipeDTO {
 
     public double getFats() { return fats; }
     public void setFats(double fats) { this.fats = fats; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
     public String getImage() { return image; }
     public void setImage(String image) { this.image = image; }

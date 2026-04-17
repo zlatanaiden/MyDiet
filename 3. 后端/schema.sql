@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS `recipes` (
   `id` INT NOT NULL PRIMARY KEY COMMENT 'Food.com RecipeId',
   `name` VARCHAR(255) NOT NULL,
   `total_time` VARCHAR(255),
-  `image_url` VARCHAR(600),
+  `image_url` LONGTEXT,
   `category` VARCHAR(255),
   `keywords` JSON,
   `ingredients` JSON,

@@ -176,7 +176,7 @@ public class MealPlanService {
         return 2.0 * cD * cD + pD * pD + kD * kD + fD * fD;
     }
 
-    private double norm(Double actual, double target) {
+    private double norm(Float actual, double target) {
         if (actual == null || target == 0) return 0;
         return (actual - target) / target;
     }
