@@ -28,11 +28,11 @@ except ImportError:
     print("Run:  pip install mysql-connector-python")
     sys.exit(1)
 
-# ── Config ──
-DB_HOST = "localhost"
-DB_PORT = 3306
-DB_USER = "root"
-DB_PASS = "11223355"
+# ── Config (TiDB Cloud) ──
+DB_HOST = "gateway01.eu-central-1.prod.aws.tidbcloud.com"
+DB_PORT = 4000            
+DB_USER = "3sTQ2mBhRjP6pH9.root"
+DB_PASS = "VfY5VCClx7lfLqjc"
 DB_NAME = "mydiet_nutrition"
 CSV_PATH = os.path.join(os.path.dirname(__file__), "数据库表格", "recipes.csv")
 DRI_CSV_PATH = os.path.join(os.path.dirname(__file__), "数据库表格", "Dietary_ Reference_Intakes.csv")
@@ -43,12 +43,16 @@ def main():
         print("Make sure 数据库表格/recipes.csv exists in the project root.")
         sys.exit(1)
 
-    print(f"Connecting to MySQL {DB_HOST}:{DB_PORT} ...")
+    print(f"Connecting to TiDB Cloud {DB_HOST}:{DB_PORT} ...")
+    
     conn = mysql.connector.connect(
-        host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASS
+        host=DB_HOST, 
+        port=DB_PORT, 
+        user=DB_USER, 
+        password=DB_PASS,
+        ssl_disabled=False
     )
     cursor = conn.cursor()
-
     # Create database
     cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{DB_NAME}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     cursor.execute(f"USE `{DB_NAME}`")

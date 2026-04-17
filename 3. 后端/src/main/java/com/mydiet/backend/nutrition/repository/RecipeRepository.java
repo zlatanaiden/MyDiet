@@ -19,13 +19,12 @@ public interface RecipeRepository extends JpaRepository<Recipe, Integer> {
           AND (:excludeKeyword IS NULL
                OR ingredients NOT LIKE CONCAT('%', :excludeKeyword, '%'))
         ORDER BY RAND()
-        LIMIT :lim
+        LIMIT 3
         """, nativeQuery = true)
     java.util.List<Recipe> findByCaloriesRangeRandom(
         @Param("minCal") double minCal,
         @Param("maxCal") double maxCal,
-        @Param("excludeKeyword") String excludeKeyword,
-        @Param("lim") int lim
+        @Param("excludeKeyword") String excludeKeyword
     );
 
     /** 按分类分页查询 */

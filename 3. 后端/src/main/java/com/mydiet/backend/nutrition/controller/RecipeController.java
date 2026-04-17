@@ -74,18 +74,14 @@ public class RecipeController {
      *   "count": 10                   // 返回条数
      * }
      */
-    @PostMapping("/suggest")
+@PostMapping("/suggest")
     public List<Recipe> suggest(@RequestBody Map<String, Object> body) {
         double minCal = toDouble(body.get("minCal"), 0);
         double maxCal = toDouble(body.get("maxCal"), 9999);
         String exclude = body.get("excludeKeyword") != null
                 ? body.get("excludeKeyword").toString()
                 : null;
-        int count = body.get("count") != null
-                ? Integer.parseInt(body.get("count").toString())
-                : 10;
-
-        return repo.findByCaloriesRangeRandom(minCal, maxCal, exclude, count);
+        return repo.findByCaloriesRangeRandom(minCal, maxCal, exclude); 
     }
 
     private double toDouble(Object o, double fallback) {
