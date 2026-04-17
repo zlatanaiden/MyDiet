@@ -1,4 +1,3 @@
 ﻿*.csv
 
 # Each developer has their own DB password — keep local
-**/application.properties
