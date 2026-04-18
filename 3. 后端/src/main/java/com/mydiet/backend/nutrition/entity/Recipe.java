@@ -5,6 +5,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 @Entity
 @Table(name = "recipes", catalog = "mydiet_nutrition")
 @Data
@@ -69,4 +72,13 @@ public class Recipe {
 
     @Column(name = "recipe_yield", columnDefinition = "TEXT")
     private String recipeYield;
+
+    private static final Pattern URL_PATTERN = Pattern.compile("\"(https?://[^\"]+)\"");
+
+    public String getImageUrl() {
+        if (imageUrl == null || imageUrl.isBlank()) return null;
+        if (imageUrl.startsWith("http")) return imageUrl.trim();
+        Matcher m = URL_PATTERN.matcher(imageUrl);
+        return m.find() ? m.group(1) : null;
+    }
 }

@@ -70,7 +70,10 @@ public class RecipeCache {
         metas = new ArrayList<>(all.size());
 
         for (Recipe r : all) {
-            //em.detach(r);
+            // 过滤掉没有有效图片 URL 的食谱
+            String img = r.getImageUrl();
+            if (img == null || img.isBlank()) continue;
+
             byId.put(r.getId(), r);
             metas.add(new Meta(
                 r.getId(),
@@ -82,7 +85,8 @@ public class RecipeCache {
         }
 
         long elapsed = System.currentTimeMillis() - t0;
-        log.info("RecipeCache loaded {} recipes in {} ms", metas.size(), elapsed);
+        log.info("RecipeCache loaded {} recipes (filtered from {} total) in {} ms",
+                 metas.size(), all.size(), elapsed);
     }
 
     // ─── 对外方法：过滤 + 随机采样 ─────────────────────────

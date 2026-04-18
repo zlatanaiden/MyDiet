@@ -6,7 +6,11 @@ import com.mydiet.backend.nutrition.entity.Recipe;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import org.springframework.web.util.HtmlUtils;
+
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -206,7 +210,7 @@ public class MealPlanService {
     }
 
     private double calcTdee(double bmr, String activityLevel) {
-        double pal = PAL.getOrDefault(activityLevel, 1.55);
+        double pal = (activityLevel != null) ? PAL.getOrDefault(activityLevel, 1.55) : 1.55;
         return bmr * pal;
     }
 
@@ -216,10 +220,19 @@ public class MealPlanService {
     private RecipeDTO toDto(Recipe r) {
         if (r == null) return null;
         return new RecipeDTO(
-            r.getId(), r.getName(), r.getCalories(), r.getProteinG(),
-            r.getCarbohydrateG(), r.getFatG(), r.getImageUrl(), r.getCategory(),
+            r.getId(), HtmlUtils.htmlUnescape(r.getName()), r.getCalories(), r.getProteinG(),
+            r.getCarbohydrateG(), r.getFatG(), extractFirstUrl(r.getImageUrl()), r.getCategory(),
             r.getTotalTime(), r.getKeywords(), r.getIngredients(), r.getQuantities(), r.getInstructions()
         );
+    }
+
+    private static final Pattern URL_PATTERN = Pattern.compile("\"(https?://[^\"]+)\"");
+
+    private String extractFirstUrl(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        if (raw.startsWith("http")) return raw.trim();
+        Matcher m = URL_PATTERN.matcher(raw);
+        return m.find() ? m.group(1) : null;
     }
 
     private void recordIds(Set<Integer> usedIds, MealSlot slot) {
