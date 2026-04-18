@@ -63,7 +63,7 @@ public class RecipeCache {
     private void load() {
         long t0 = System.currentTimeMillis();
         List<Recipe> all = em.createNativeQuery(
-            "SELECT * FROM mydiet_nutrition.recipes", Recipe.class
+            "SELECT * FROM mydiet_nutrition.recipes LIMIT 20000", Recipe.class
         ).getResultList();
 
         byId  = new HashMap<>(all.size());
