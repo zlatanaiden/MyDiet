@@ -179,7 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const myDbId = localStorage.getItem('mydiet_user_db_id');
         
-        const url = myDbId ? `http://localhost:8080/api/posts?userId=${myDbId}` : 'http://localhost:8080/api/posts';
+        const url = myDbId ? `https://mydiet-l8vb.onrender.com/api/posts?userId=${myDbId}` : 'https://mydiet-l8vb.onrender.com/api/posts';
         const response = await fetch(url);
         
         if (!response.ok) throw new Error('Network request failed');
@@ -274,7 +274,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const { id } = JSON.parse(stored)
         if (id) {
-          fetch(`http://localhost:8080/api/users/${id}/profile`, {
+          fetch(`https://mydiet-l8vb.onrender.com/api/users/${id}/profile`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -604,7 +604,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
 
       // 3. Send the POST request
-      const response = await fetch('http://localhost:8080/api/posts', {
+      const response = await fetch('https://mydiet-l8vb.onrender.com/api/posts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -651,7 +651,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const realAvatar = currentUserData.avatarGradient || 'from-[#3B82F6] to-[#8B5CF6]';
 
       // 2. Send request
-      const response = await fetch(`http://localhost:8080/api/posts/${postId}/comments`, {
+      const response = await fetch(`https://mydiet-l8vb.onrender.com/api/posts/${postId}/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -793,7 +793,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // 2. 告诉后端去数据库里更新 post_likes 表 (注意这里加上了 userId)
     try {
-      await fetch(`http://localhost:8080/api/posts/${postId}/like?userId=${myDbId}&isLike=${isNowLiked}`, {
+      await fetch(`https://mydiet-l8vb.onrender.com/api/posts/${postId}/like?userId=${myDbId}&isLike=${isNowLiked}`, {
         method: 'PUT'
       });
     } catch (error) {
@@ -833,7 +833,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // 2. 告诉后端去更新数据库
     try {
-      await fetch(`http://localhost:8080/api/posts/comments/${commentId}/like?userId=${myDbId}&isLike=${isNowLiked}`, {
+      await fetch(`https://mydiet-l8vb.onrender.com/api/posts/comments/${commentId}/like?userId=${myDbId}&isLike=${isNowLiked}`, {
         method: 'PUT'
       });
     } catch (error) {
@@ -868,7 +868,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   try {
     const normalizedEmail = email.trim().toLowerCase()
 
-    const response = await fetch('http://localhost:8080/auth/login', {
+    const response = await fetch('https://mydiet-l8vb.onrender.com/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -929,7 +929,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 // Sign up — create account if email does not already exist
   const signUp = useCallback(async (name: string, email: string, password: string): Promise<AuthResult> => {
     try {
-      const response = await fetch('http://localhost:8080/auth/register', {
+      const response = await fetch('https://mydiet-l8vb.onrender.com/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

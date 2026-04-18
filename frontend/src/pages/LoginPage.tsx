@@ -165,7 +165,7 @@ const handleSignIn = async (e: React.FormEvent) => {
   <button
     onClick={() => {
       console.log("Google login clicked");
-      window.location.href = "http://localhost:8080/oauth2/authorization/google";
+      window.location.href = "https://mydiet-l8vb.onrender.com/oauth2/authorization/google";
     }}
     className="flex h-11 flex-1 items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-white/5 transition hover:bg-white/10"
   >

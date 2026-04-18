@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8080'
+const API_BASE = 'https://mydiet-l8vb.onrender.com'
 
 // ── Request / Response types matching backend DTOs ──
 
